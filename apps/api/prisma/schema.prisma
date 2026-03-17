@@ -1,0 +1,64 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Channel {
+  id            String         @id @default(cuid())
+  type          String         // "whatsapp" | "teams"
+  name          String
+  config        Json
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  conversations Conversation[]
+  webhookEvents WebhookEvent[]
+}
+
+model Conversation {
+  id              String    @id @default(cuid())
+  channelId       String
+  externalId      String
+  contact         Json
+  lastMessageAt   DateTime  @default(now())
+  lastMessageBody String?
+  unreadCount     Int       @default(0)
+  metadata        Json?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  channel         Channel   @relation(fields: [channelId], references: [id])
+  messages        Message[]
+
+  @@unique([channelId, externalId])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  externalId     String?
+  direction      String       // "inbound" | "outbound"
+  body           String
+  mediaUrl       String?
+  status         String       @default("sent") // "sent" | "delivered" | "read" | "failed"
+  sentAt         DateTime     @default(now())
+  deliveredAt    DateTime?
+  readAt         DateTime?
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+
+  @@index([conversationId, sentAt])
+}
+
+model WebhookEvent {
+  id         String   @id @default(cuid())
+  channelId  String
+  payload    Json
+  processed  Boolean  @default(false)
+  receivedAt DateTime @default(now())
+  channel    Channel  @relation(fields: [channelId], references: [id])
+
+  @@index([channelId, processed])
+}
