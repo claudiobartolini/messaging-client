@@ -39,9 +39,19 @@ export async function channelRoutes(app: FastifyInstance) {
     }
   );
 
-  // Delete a channel
+  // Delete a channel and all related data
   app.delete<{ Params: { id: string } }>("/:id", async (request, reply) => {
-    await prisma.channel.delete({ where: { id: request.params.id } });
+    const { id } = request.params;
+    const conversations = await prisma.conversation.findMany({ where: { channelId: id }, select: { id: true } });
+    const conversationIds = conversations.map((c: { id: string }) => c.id);
+
+    await prisma.$transaction([
+      prisma.message.deleteMany({ where: { conversationId: { in: conversationIds } } }),
+      prisma.conversation.deleteMany({ where: { channelId: id } }),
+      prisma.webhookEvent.deleteMany({ where: { channelId: id } }),
+      prisma.channel.delete({ where: { id } }),
+    ]);
+
     return reply.status(204).send();
   });
 }
