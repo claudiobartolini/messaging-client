@@ -5,6 +5,7 @@ import { Server } from "socket.io";
 import { PrismaClient } from "@prisma/client";
 import { registry } from "./channels/registry";
 import { WhatsAppAdapter } from "./channels/whatsapp/whatsapp.adapter";
+import { TeamsAdapter } from "./channels/teams/teams.adapter";
 import { webhookRoutes } from "./webhooks/routes";
 import { channelRoutes } from "./settings/channel.routes";
 import { conversationRoutes } from "./conversations/routes";
@@ -15,6 +16,7 @@ async function start() {
 
   // Register adapters
   registry.register(new WhatsAppAdapter());
+  registry.register(new TeamsAdapter());
 
   // Plugins
   await app.register(cors, { origin: true });
