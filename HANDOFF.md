@@ -15,11 +15,13 @@ A multi-channel messaging inbox built as a pnpm + Turborepo monorepo. Lets you r
 - Replies from the inbox are sent back via WhatsApp
 - Webhook verified and subscribed to `messages` field in Meta dashboard
 
-### Teams — CODE WRITTEN, NOT YET CONNECTED
+### Teams — FULLY WORKING
 - `TeamsAdapter` implemented at `apps/api/src/channels/teams/teams.adapter.ts`
 - Registered in `apps/api/src/main.ts`
-- Blocked on: Azure AD App Registration requires a work/school Microsoft account (free personal Azure account doesn't have AD access)
-- To resume: sign into Azure with a work account, create an App Registration, generate a client secret, then add the Teams channel via Settings UI
+- Azure Bot resource created, Teams channel connected
+- Inbound messages arrive in the inbox, replies are delivered back to Teams
+- Bot deployed as a custom Teams App (package at `~/teams-app.zip`)
+- Webhook endpoint: `/webhooks/teams` (requires ngrok or public URL pointed at port 3001)
 
 ---
 
@@ -37,12 +39,12 @@ You'll need to re-add the channel via localhost:5173/settings if you reset the d
 - **Webhook Callback URL:** needs to be updated whenever your ngrok URL changes (ngrok free tier gets a new URL each restart)
 - **Webhook field subscribed:** `messages`
 
-### Azure (Teams — incomplete)
-- **Microsoft App ID:** `91326745-ce2f-411c-bcbb-bc32596dd026`
-- **App Tenant ID:** `99f5c844-7eaf-4d36-881f-20829ad20273`
-- **Resource group:** `messaging-client-rg`
-- **Bot handle:** `messaging-client-bot`
-- **Client Secret:** NOT YET CREATED (blocked on AD permissions)
+### Azure (Teams — fully configured)
+- **Microsoft App ID:** `d71e49d8-4263-4d9d-b204-c8e7e8ceacd1`
+- **App Tenant ID:** `463d4265-fcf2-475e-b0d6-4d53cf2fffcd`
+- **Client Secret:** stored in `apps/api/.env` as `TEAMS_CLIENT_SECRET` (also re-add via Settings UI if DB is reset)
+- **Azure Bot messaging endpoint:** `https://<ngrok-url>/webhooks/teams` (update when ngrok URL changes)
+- **Teams App package:** `~/teams-app.zip` — upload via Teams → Apps → Upload a custom app to reinstall the bot
 
 ### Local .env (apps/api/.env — not committed, recreate from .env.example)
 ```
@@ -78,37 +80,45 @@ pnpm dev
 # Web: localhost:5173
 ```
 
-Then go to localhost:5173/settings and re-add the WhatsApp channel with your credentials.
+Then go to localhost:5173/settings and re-add the WhatsApp and Teams channels with your credentials.
 
-### To receive real WhatsApp messages (ngrok required)
+### To receive real messages (ngrok required for both channels)
 ```bash
-ngrok http 3001 --request-header-add "ngrok-skip-browser-warning: true"
-# Copy the https URL
-# Update Callback URL in Meta → WhatsApp → Configuration to:
-# https://<your-ngrok-url>/webhooks/whatsapp
+ngrok http 3001
+# Copy the https URL, then update:
+# - Meta → WhatsApp → Configuration → Callback URL: https://<ngrok-url>/webhooks/whatsapp
+# - Azure Bot resource → Configuration → Messaging endpoint: https://<ngrok-url>/webhooks/teams
+```
+
+### Docker setup (WSL)
+```bash
+sudo service docker start   # start Docker daemon
+docker compose up -d        # start Postgres + Redis
+newgrp docker               # if docker group was just added
 ```
 
 ---
 
-## What was built in this session
+## What was built
 
 1. **Initial scaffold** — monorepo with Fastify API, React frontend, shared types package
 2. **3-panel inbox UI** — Sidebar, ConversationList, MessageThread with real-time Socket.IO
 3. **WhatsApp adapter** — full send/receive via Meta Graph API, webhook verification
 4. **Settings UI** — add/enable/disable/delete channels dynamically
-5. **Bug fixes:**
-   - Channel delete was failing due to `Content-Type: application/json` sent on DELETE with no body
-   - Channel delete was failing due to missing cascade (conversations/messages/webhookEvents blocked FK delete)
+5. **Teams adapter** — full send/receive via Bot Framework, Azure Bot + Teams channel configured
+6. **Bug fixes:**
+   - Channel delete failing due to `Content-Type` header on bodyless DELETE
+   - Channel delete blocked by FK constraints (missing cascade)
    - `res.json()` called on 204 No Content response
-6. **Teams adapter** — written, registered, not yet connected to Azure
+   - Teams replies broken: `serviceUrl` not preserved — fixed by encoding `serviceUrl::conversationId` into `contactId` at ingest time
 
 ---
 
 ## Next steps
 
-1. **Finish Teams setup** — needs work/school Azure account to create App Registration + client secret
-2. **Deploy** — replace ngrok with a real server; update Meta webhook URL
-3. **Production token** — WhatsApp System User token is already long-lived (never expires), no action needed
+1. **Deploy** — replace ngrok with a permanent domain; update Meta webhook URL and Azure Bot messaging endpoint
+2. **Production token** — WhatsApp System User token is already long-lived (never expires), no action needed
+3. **Teams webhook security** — add JWT validation for inbound Bot Framework requests (currently unauthenticated)
 
 ---
 

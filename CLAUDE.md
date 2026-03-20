@@ -75,3 +75,19 @@ Copy `apps/api/.env.example` to `apps/api/.env`. Required vars:
 - `DATABASE_URL` — defaults to the docker-compose Postgres instance
 - `REDIS_URL` — defaults to the docker-compose Redis instance
 - WhatsApp vars (`WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`) — only needed for WhatsApp channel
+- Teams vars (`TEAMS_APP_ID`, `TEAMS_TENANT_ID`, `TEAMS_CLIENT_SECRET`) — for reference only, actual config stored in DB via Settings UI
+
+## WSL / Docker notes
+
+- Docker must be started manually in WSL: `sudo service docker start`
+- After adding user to docker group, run `newgrp docker` or restart the WSL session
+- If ports 3001 or 5173 are in use: `fuser -k 3001/tcp 5173/tcp`
+- `pnpm dev` starts both API and web via Turborepo; if only one dies, restart individually:
+  ```bash
+  pnpm --filter @messaging/api dev
+  pnpm --filter @messaging/web dev
+  ```
+
+## Teams adapter — important implementation note
+
+The `TeamsAdapter` encodes `serviceUrl` into `contactId` as `"serviceUrl::conversationId"` at webhook ingest time. This is required so `sendMessage` can reconstruct the Bot Framework endpoint. If you ever reset the database, old conversations with plain `conversationId` format (no `::`) will fail to reply — delete them and let new inbound messages recreate them.
