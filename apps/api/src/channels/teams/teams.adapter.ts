@@ -27,24 +27,19 @@ export class TeamsAdapter implements ChannelAdapter {
 
     if (activity.type !== "message" || !activity.text) return [];
 
-    const contactId = activity.from?.id ?? "unknown";
     const contactName = activity.from?.name;
-    const conversationId = activity.conversation?.id ?? contactId;
+    const conversationId = activity.conversation?.id ?? activity.from?.id ?? "unknown";
+    const serviceUrl = (activity.serviceUrl as string ?? "").replace(/\/?$/, "/");
 
     return [
       {
         externalId: activity.id,
         channelId: activity.channelId ?? "msteams",
         direction: "inbound",
-        contactId: conversationId,
+        contactId: `${serviceUrl}::${conversationId}`,
         contactName,
         body: activity.text,
         sentAt: activity.timestamp ?? new Date().toISOString(),
-        metadata: {
-          serviceUrl: activity.serviceUrl,
-          conversationId: activity.conversation?.id,
-          botId: activity.recipient?.id,
-        },
       },
     ];
   }

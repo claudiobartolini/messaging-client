@@ -7,6 +7,9 @@
     "build": "turbo run build",
     "lint": "turbo run lint"
   },
+  "pnpm": {
+    "onlyBuiltDependencies": ["@prisma/client", "@prisma/engines", "esbuild", "msgpackr-extract", "prisma"]
+  },
   "devDependencies": {
     "turbo": "^2.0.0",
     "typescript": "^5.4.0"
