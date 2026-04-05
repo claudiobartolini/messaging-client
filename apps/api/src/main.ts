@@ -54,7 +54,10 @@ async function start() {
     return reply.status(status >= 400 ? status : 500).send({ error: error.message ?? "Internal server error" });
   });
 
+  const authDisabled = !process.env.KEYCLOAK_URL || process.env.KEYCLOAK_URL === "https://your-keycloak-host";
+
   app.addHook("onRequest", async (request, reply) => {
+    if (authDisabled) return;
     if (request.url.startsWith("/api/")) {
       try {
         await request.jwtVerify();
