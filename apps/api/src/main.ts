@@ -4,7 +4,8 @@ import cors from "@fastify/cors";
 import fjwt from "@fastify/jwt";
 import jwksClient from "jwks-rsa";
 import { Server } from "socket.io";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
+import { ZodError } from "zod";
 import { registry } from "./channels/registry";
 import { WhatsAppAdapter } from "./channels/whatsapp/whatsapp.adapter";
 import { TeamsAdapter } from "./channels/teams/teams.adapter";
@@ -38,6 +39,19 @@ async function start() {
       });
     },
     verify: { algorithms: ["RS256"] },
+  });
+
+  app.setErrorHandler(async (error, _request, reply) => {
+    if (error instanceof ZodError) {
+      return reply.status(400).send({ error: "Validation failed", details: error.flatten().fieldErrors });
+    }
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === "P2025") return reply.status(404).send({ error: "Not found" });
+      if (error.code === "P2002") return reply.status(409).send({ error: "Already exists" });
+    }
+    app.log.error(error);
+    const status = (error as any).statusCode ?? 500;
+    return reply.status(status >= 400 ? status : 500).send({ error: error.message ?? "Internal server error" });
   });
 
   app.addHook("onRequest", async (request, reply) => {

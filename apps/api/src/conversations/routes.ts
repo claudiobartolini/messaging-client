@@ -48,37 +48,43 @@ export async function conversationRoutes(app: FastifyInstance) {
   app.post<{ Params: { id: string }; Body: { body: string } }>(
     "/:id/messages",
     async (request, reply) => {
-      const conversation = await prisma.conversation.findUniqueOrThrow({
-        where: { id: request.params.id },
-        include: { channel: true },
-      });
+      try {
+        const conversation = await prisma.conversation.findUniqueOrThrow({
+          where: { id: request.params.id },
+          include: { channel: true },
+        });
 
-      const adapter = registry.get(conversation.channel.type);
-      const result = await adapter.sendMessage(
-        (conversation.contact as any).id,
-        { body: request.body.body },
-        conversation.channel.config
-      );
+        const adapter = registry.get(conversation.channel.type);
+        const result = await adapter.sendMessage(
+          (conversation.contact as any).id,
+          { body: request.body.body },
+          conversation.channel.config
+        );
 
-      const message = await prisma.message.create({
-        data: {
-          conversationId: conversation.id,
-          externalId: result.externalId,
-          direction: "outbound",
-          body: request.body.body,
-          status: result.status,
-          sentAt: new Date().toISOString(),
-        },
-      });
+        const message = await prisma.message.create({
+          data: {
+            conversationId: conversation.id,
+            externalId: result.externalId,
+            direction: "outbound",
+            body: request.body.body,
+            status: result.status,
+            sentAt: new Date().toISOString(),
+          },
+        });
 
-      await prisma.conversation.update({
-        where: { id: conversation.id },
-        data: { lastMessageAt: new Date(), lastMessageBody: request.body.body },
-      });
+        await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: { lastMessageAt: new Date(), lastMessageBody: request.body.body },
+        });
 
-      (app as any).io.to(`conversation:${conversation.id}`).emit("message:new", message);
+        (app as any).io.to(`conversation:${conversation.id}`).emit("message:new", message);
 
-      return reply.status(201).send(message);
+        return reply.status(201).send(message);
+      } catch (err: any) {
+        if (err?.code === "P2025") throw err; // let global handler return 404
+        app.log.error(err, "sendMessage failed");
+        return reply.status(502).send({ error: "Failed to deliver message" });
+      }
     }
   );
 }

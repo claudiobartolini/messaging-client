@@ -6,7 +6,12 @@ export async function webhookRoutes(app: FastifyInstance) {
   app.get<{ Params: { channelType: string }; Querystring: Record<string, string> }>(
     "/:channelType",
     async (request, reply) => {
-      const adapter = registry.get(request.params.channelType);
+      let adapter;
+      try {
+        adapter = registry.get(request.params.channelType);
+      } catch {
+        return reply.status(404).send({ error: "Unknown channel type" });
+      }
       if (!adapter.verifyWebhook) return reply.status(404).send();
 
       // Load channel config from DB
@@ -26,7 +31,12 @@ export async function webhookRoutes(app: FastifyInstance) {
   app.post<{ Params: { channelType: string } }>(
     "/:channelType",
     async (request, reply) => {
-      const adapter = registry.get(request.params.channelType);
+      let adapter;
+      try {
+        adapter = registry.get(request.params.channelType);
+      } catch {
+        return reply.status(404).send({ error: "Unknown channel type" });
+      }
 
       const channel = await (app as any).prisma.channel.findFirst({
         where: { type: request.params.channelType, isActive: true },
@@ -41,40 +51,44 @@ export async function webhookRoutes(app: FastifyInstance) {
       const normalizedMessages = await adapter.handleWebhook(request.body, channel.config);
 
       for (const msg of normalizedMessages) {
-        // Upsert conversation
-        const conversation = await (app as any).prisma.conversation.upsert({
-          where: { channelId_externalId: { channelId: channel.id, externalId: msg.contactId } },
-          create: {
-            channelId: channel.id,
-            externalId: msg.contactId,
-            contact: { id: msg.contactId, name: msg.contactName },
-            lastMessageAt: msg.sentAt,
-            lastMessageBody: msg.body,
-            unreadCount: 1,
-          },
-          update: {
-            lastMessageAt: msg.sentAt,
-            lastMessageBody: msg.body,
-            unreadCount: { increment: 1 },
-          },
-        });
+        try {
+          // Upsert conversation
+          const conversation = await (app as any).prisma.conversation.upsert({
+            where: { channelId_externalId: { channelId: channel.id, externalId: msg.contactId } },
+            create: {
+              channelId: channel.id,
+              externalId: msg.contactId,
+              contact: { id: msg.contactId, name: msg.contactName },
+              lastMessageAt: msg.sentAt,
+              lastMessageBody: msg.body,
+              unreadCount: 1,
+            },
+            update: {
+              lastMessageAt: msg.sentAt,
+              lastMessageBody: msg.body,
+              unreadCount: { increment: 1 },
+            },
+          });
 
-        // Save message
-        const savedMessage = await (app as any).prisma.message.create({
-          data: {
-            conversationId: conversation.id,
-            externalId: msg.externalId,
-            direction: msg.direction,
-            body: msg.body,
-            mediaUrl: msg.mediaUrl,
-            status: "delivered",
-            sentAt: msg.sentAt,
-          },
-        });
+          // Save message
+          const savedMessage = await (app as any).prisma.message.create({
+            data: {
+              conversationId: conversation.id,
+              externalId: msg.externalId,
+              direction: msg.direction,
+              body: msg.body,
+              mediaUrl: msg.mediaUrl,
+              status: "delivered",
+              sentAt: msg.sentAt,
+            },
+          });
 
-        // Emit via Socket.IO
-        (app as any).io.to(`conversation:${conversation.id}`).emit("message:new", savedMessage);
-        (app as any).io.to(`channel:${channel.id}`).emit("conversation:updated", conversation);
+          // Emit via Socket.IO
+          (app as any).io.to(`conversation:${conversation.id}`).emit("message:new", savedMessage);
+          (app as any).io.to(`channel:${channel.id}`).emit("conversation:updated", conversation);
+        } catch (err) {
+          app.log.error({ err, msg }, "Failed to persist inbound message");
+        }
       }
 
       return reply.send({ status: "ok" });

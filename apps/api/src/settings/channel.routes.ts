@@ -19,8 +19,13 @@ export async function channelRoutes(app: FastifyInstance) {
     "/",
     async (request, reply) => {
       const { type, name, config } = request.body;
-      const adapter = registry.get(type);
-      adapter.configSchema.parse(config); // validate config
+      let adapter;
+      try {
+        adapter = registry.get(type);
+      } catch {
+        return reply.status(400).send({ error: `Unknown channel type: ${type}` });
+      }
+      adapter.configSchema.parse(config); // validate config — ZodError propagates to global handler
 
       const channel = await prisma.channel.create({ data: { type, name, config } });
       return reply.status(201).send(channel);
