@@ -1,6 +1,8 @@
 import "dotenv/config";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import fjwt from "@fastify/jwt";
+import jwksClient from "jwks-rsa";
 import { Server } from "socket.io";
 import { PrismaClient } from "@prisma/client";
 import { registry } from "./channels/registry";
@@ -20,6 +22,33 @@ async function start() {
 
   // Plugins
   await app.register(cors, { origin: true });
+
+  // JWT / Keycloak
+  const keycloakUrl = process.env.KEYCLOAK_URL ?? "https://your-keycloak-host";
+  const keycloakRealm = process.env.KEYCLOAK_REALM ?? "your-realm";
+  const jwks = jwksClient({
+    jwksUri: `${keycloakUrl}/realms/${keycloakRealm}/protocol/openid-connect/certs`,
+    cache: true,
+    rateLimit: true,
+  });
+  await app.register(fjwt, {
+    secret: (_request: unknown, token: { header: { kid?: string } }, callback: (err: Error | null, secret?: string) => void) => {
+      jwks.getSigningKey(token.header.kid, (err, key) => {
+        callback(err, key?.getPublicKey());
+      });
+    },
+    verify: { algorithms: ["RS256"] },
+  });
+
+  app.addHook("onRequest", async (request, reply) => {
+    if (request.url.startsWith("/api/")) {
+      try {
+        await request.jwtVerify();
+      } catch {
+        reply.status(401).send({ error: "Unauthorized" });
+      }
+    }
+  });
 
   // Socket.IO
   const io = new Server(app.server, { cors: { origin: "*" } });

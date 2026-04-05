@@ -106,9 +106,75 @@ ngrok http 3001 --request-header-add "ngrok-skip-browser-warning: true"
 
 ## Next steps
 
-1. **Finish Teams setup** — needs work/school Azure account to create App Registration + client secret
-2. **Deploy** — replace ngrok with a real server; update Meta webhook URL
-3. **Production token** — WhatsApp System User token is already long-lived (never expires), no action needed
+1. **Wire up Keycloak on Friday** — see the Keycloak section below; all integration code is already written
+2. **Finish Teams setup** — needs work/school Azure account to create App Registration + client secret
+3. **Deploy** — replace ngrok with a real server; update Meta webhook URL
+4. **Production token** — WhatsApp System User token is already long-lived (never expires), no action needed
+
+---
+
+---
+
+## Keycloak Authentication
+
+All integration code is written and wired up. The only thing missing is the real Keycloak host/realm values, which will be available Friday when the realm is configured onsite.
+
+### How it works
+
+**Frontend flow (`apps/web`)**
+- `src/keycloak.ts` — creates the `keycloak-js` instance from three `VITE_*` env vars
+- `src/main.tsx` — calls `keycloak.init({ onLoad: 'login-required', pkceMethod: 'S256' })` before mounting React. If the user is not authenticated, `keycloak-js` redirects them to the Keycloak login page automatically. The React app only mounts after a successful login.
+- `src/api/client.ts` — every API request includes `Authorization: Bearer <token>` taken from `keycloak.token`. The token is kept in memory (never localStorage) by `keycloak-js`.
+
+**Backend flow (`apps/api`)**
+- `@fastify/jwt` is registered with a dynamic JWKS secret resolver using `jwks-rsa`. On each request, it fetches the signing public key from Keycloak's JWKS endpoint (`/realms/<realm>/protocol/openid-connect/certs`) and verifies the JWT signature using RS256.
+- An `onRequest` hook guards every route under `/api/*`. Any request without a valid Bearer token receives a `401 Unauthorized`.
+- Routes under `/webhooks/*` and the `/health` endpoint are **not** protected — inbound webhooks from WhatsApp/Teams arrive unauthenticated by design.
+
+### Wiring it up Friday
+
+**1. Create a `.env` entry in `apps/api/.env`:**
+```
+KEYCLOAK_URL=https://<your-keycloak-host>
+KEYCLOAK_REALM=<your-realm-name>
+KEYCLOAK_CLIENT_ID=messaging-client
+```
+
+**2. Create a Vite env file for the web app** (e.g. `apps/web/.env.local` — not committed):
+```
+VITE_KEYCLOAK_URL=https://<your-keycloak-host>
+VITE_KEYCLOAK_REALM=<your-realm-name>
+VITE_KEYCLOAK_CLIENT_ID=messaging-client
+```
+
+**3. Configure the Keycloak client** in the admin console:
+- Client type: `OpenID Connect`
+- Client authentication: **OFF** (public client — SPA)
+- Standard flow: **ON**
+- Valid redirect URIs: `http://localhost:5173/*` (add your production URL too)
+- Valid post logout redirect URIs: `http://localhost:5173/*`
+- Web origins: `http://localhost:5173` (or `+` to allow all redirect URIs)
+
+**4. Restart both apps** — `pnpm dev`. Opening the web app should now redirect to Keycloak login.
+
+### Verification checklist
+- [ ] Open `http://localhost:5173` → redirected to Keycloak login page
+- [ ] Login with a valid realm user → lands on the inbox
+- [ ] Inspect Network tab → all `/api/*` requests carry `Authorization: Bearer ...`
+- [ ] `curl http://localhost:3001/api/conversations` → `401 Unauthorized`
+- [ ] `curl -X POST http://localhost:3001/webhooks/whatsapp` → not a 401 (passes auth, may 400 on bad payload)
+- [ ] `curl http://localhost:3001/health` → `{"status":"ok"}`
+
+### Files changed
+| File | What changed |
+|------|-------------|
+| `apps/web/src/keycloak.ts` | New — Keycloak instance, reads `VITE_*` env vars |
+| `apps/web/src/main.tsx` | Init Keycloak with `login-required` before mounting React |
+| `apps/web/src/api/client.ts` | Inject `Authorization: Bearer` header on every request |
+| `apps/web/package.json` | Added `keycloak-js@^26` |
+| `apps/api/src/main.ts` | Register `@fastify/jwt` + JWKS resolver; `onRequest` hook for `/api/*` |
+| `apps/api/package.json` | Added `@fastify/jwt@^9`, `jwks-rsa@^3` |
+| `apps/api/.env.example` | Added `KEYCLOAK_URL`, `KEYCLOAK_REALM`, `KEYCLOAK_CLIENT_ID` placeholders |
 
 ---
 

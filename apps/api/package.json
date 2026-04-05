@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@fastify/cors": "^9.0.0",
+    "@fastify/jwt": "^9.0.0",
+    "jwks-rsa": "^3.1.0",
     "@messaging/shared": "workspace:*",
     "@prisma/client": "^5.14.0",
     "@socket.io/redis-adapter": "^8.3.0",

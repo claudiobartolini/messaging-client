@@ -1,8 +1,11 @@
+import keycloak from '../keycloak';
+
 const BASE = "/api";
 
 async function req<T>(path: string, options?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {};
   if (options?.body) headers["Content-Type"] = "application/json";
+  if (keycloak.token) headers["Authorization"] = `Bearer ${keycloak.token}`;
   const res = await fetch(`${BASE}${path}`, {
     headers,
     ...options,
