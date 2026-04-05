@@ -11,6 +11,9 @@ const queryClient = new QueryClient({
 
 keycloak.init({ onLoad: 'login-required', pkceMethod: 'S256' }).then((authenticated) => {
   if (!authenticated) return;
+  keycloak.onTokenExpired = () => {
+    keycloak.updateToken(30).catch(() => keycloak.login());
+  };
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <QueryClientProvider client={queryClient}>
