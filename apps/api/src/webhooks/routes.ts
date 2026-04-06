@@ -48,6 +48,34 @@ export async function webhookRoutes(app: FastifyInstance) {
         data: { channelId: channel.id, payload: request.body as object },
       });
 
+      // Handle WhatsApp delivery/read status updates
+      const body = request.body as any;
+      const entries = body?.entry ?? [];
+      for (const entry of entries) {
+        for (const change of entry?.changes ?? []) {
+          const value = change?.value;
+          const statuses = value?.statuses ?? [];
+          for (const s of statuses) {
+            try {
+              await (app as any).prisma.message.updateMany({
+                where: { externalId: s.id },
+                data: {
+                  status: s.status,
+                  deliveredAt: s.status === "delivered" ? new Date(Number(s.timestamp) * 1000) : undefined,
+                  readAt: s.status === "read" ? new Date(Number(s.timestamp) * 1000) : undefined,
+                },
+              });
+              const msg = await (app as any).prisma.message.findFirst({ where: { externalId: s.id } });
+              if (msg) {
+                (app as any).io.to(`conversation:${msg.conversationId}`).emit("message:updated", msg);
+              }
+            } catch (err) {
+              app.log.error({ err, s }, "Failed to update message status");
+            }
+          }
+        }
+      }
+
       const normalizedMessages = await adapter.handleWebhook(request.body, channel.config);
 
       for (const msg of normalizedMessages) {

@@ -1,8 +1,40 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { format } from "date-fns";
+import { format, isToday, isYesterday, isSameDay } from "date-fns";
+import toast from "react-hot-toast";
 import { api } from "../../api/client";
 import { useAppStore } from "../../store";
+
+function StatusIcon({ status }: { status: string }) {
+  if (status === "read") {
+    return <span className="text-xs text-blue-400">✓✓</span>;
+  }
+  if (status === "delivered") {
+    return <span className="text-xs text-gray-500">✓✓</span>;
+  }
+  if (status === "failed") {
+    return <span className="text-xs text-red-400">✗</span>;
+  }
+  return <span className="text-xs text-gray-500">✓</span>;
+}
+
+function DateSeparator({ date }: { date: Date }) {
+  let label: string;
+  if (isToday(date)) {
+    label = "Today";
+  } else if (isYesterday(date)) {
+    label = "Yesterday";
+  } else {
+    label = format(date, "MMMM d, yyyy");
+  }
+  return (
+    <div className="flex items-center gap-3 my-2">
+      <div className="flex-1 h-px bg-gray-800" />
+      <span className="text-xs text-gray-600 shrink-0">{label}</span>
+      <div className="flex-1 h-px bg-gray-800" />
+    </div>
+  );
+}
 
 export function MessageThread() {
   const { activeConversationId } = useAppStore();
@@ -19,6 +51,8 @@ export function MessageThread() {
   const send = useMutation({
     mutationFn: (body: string) => api.sendMessage(activeConversationId!, body),
     onMutate: async (body) => {
+      await queryClient.cancelQueries({ queryKey: ["messages", activeConversationId] });
+      const previous = queryClient.getQueryData(["messages", activeConversationId]);
       const optimistic = {
         id: `optimistic-${Date.now()}`,
         conversationId: activeConversationId,
@@ -31,9 +65,21 @@ export function MessageThread() {
         ["messages", activeConversationId],
         (old: any[] = []) => [...old, optimistic]
       );
+      return { previous, optimisticId: optimistic.id };
+    },
+    onSuccess: (savedMessage, _vars, context) => {
+      queryClient.setQueryData(
+        ["messages", activeConversationId],
+        (old: any[] = []) =>
+          old.map((m) => (m.id === context?.optimisticId ? savedMessage : m))
+      );
+    },
+    onError: (_err, _vars, context) => {
+      queryClient.setQueryData(["messages", activeConversationId], context?.previous);
+      toast.error("Failed to send message");
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["messages", activeConversationId] });
+      // intentionally empty — onSuccess already set correct data
     },
   });
 
@@ -59,40 +105,45 @@ export function MessageThread() {
     );
   }
 
+  // Build message list with date separators
+  const rendered: React.ReactNode[] = [];
+  let lastDate: Date | null = null;
+  for (const msg of messages as any[]) {
+    const msgDate = new Date(msg.sentAt);
+    if (!lastDate || !isSameDay(lastDate, msgDate)) {
+      rendered.push(<DateSeparator key={`sep-${msg.id}`} date={msgDate} />);
+      lastDate = msgDate;
+    }
+    const isOutbound = msg.direction === "outbound";
+    rendered.push(
+      <div key={msg.id} className={`flex ${isOutbound ? "justify-end" : "justify-start"}`}>
+        <div className="max-w-sm lg:max-w-md xl:max-w-lg">
+          <div
+            className={`px-4 py-2 rounded-2xl text-sm leading-relaxed
+              ${isOutbound
+                ? "bg-indigo-600 text-white rounded-br-sm"
+                : "bg-gray-800 text-gray-200 rounded-bl-sm"
+              }`}
+          >
+            {msg.body}
+          </div>
+          <div className={`flex items-center gap-1 mt-1 ${isOutbound ? "justify-end" : "justify-start"}`}>
+            <span className="text-xs text-gray-600">
+              {format(new Date(msg.sentAt), "HH:mm")}
+            </span>
+            {isOutbound && <StatusIcon status={msg.status} />}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 flex flex-col min-w-0">
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
         {isLoading && <p className="text-gray-500 text-sm">Loading messages...</p>}
-
-        {messages.map((msg: any) => {
-          const isOutbound = msg.direction === "outbound";
-          return (
-            <div key={msg.id} className={`flex ${isOutbound ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-sm lg:max-w-md xl:max-w-lg`}>
-                <div
-                  className={`px-4 py-2 rounded-2xl text-sm leading-relaxed
-                    ${isOutbound
-                      ? "bg-indigo-600 text-white rounded-br-sm"
-                      : "bg-gray-800 text-gray-200 rounded-bl-sm"
-                    }`}
-                >
-                  {msg.body}
-                </div>
-                <div className={`flex items-center gap-1 mt-1 ${isOutbound ? "justify-end" : "justify-start"}`}>
-                  <span className="text-xs text-gray-600">
-                    {format(new Date(msg.sentAt), "HH:mm")}
-                  </span>
-                  {isOutbound && (
-                    <span className="text-xs text-gray-600">
-                      {msg.status === "read" ? "✓✓" : msg.status === "delivered" ? "✓✓" : "✓"}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        {rendered}
         <div ref={bottomRef} />
       </div>
 

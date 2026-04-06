@@ -1,16 +1,26 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { api } from "../../api/client";
 import { useAppStore } from "../../store";
 
 export function ConversationList() {
   const { activeChannelFilter, activeConversationId, setActiveConversation, clearUnread, unreadCounts } = useAppStore();
+  const [search, setSearch] = useState("");
 
   const { data: conversations = [], isLoading } = useQuery({
     queryKey: ["conversations", activeChannelFilter],
     queryFn: () => api.getConversations(activeChannelFilter ?? undefined),
     refetchInterval: 10000,
   });
+
+  const filtered = search.trim()
+    ? conversations.filter((conv: any) => {
+        const contact = conv.contact as any;
+        const name = (contact?.name ?? contact?.id ?? "").toLowerCase();
+        return name.includes(search.trim().toLowerCase());
+      })
+    : conversations;
 
   function handleSelect(conv: any) {
     setActiveConversation(conv.id);
@@ -19,8 +29,15 @@ export function ConversationList() {
 
   return (
     <div className="w-72 flex flex-col bg-gray-900 border-r border-gray-800">
-      <div className="px-4 py-3 border-b border-gray-800">
+      <div className="px-4 py-3 border-b border-gray-800 space-y-2">
         <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Conversations</h2>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search..."
+          className="w-full bg-gray-800 text-gray-200 placeholder-gray-600 rounded-lg px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500 transition"
+        />
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -28,13 +45,13 @@ export function ConversationList() {
           <div className="p-4 text-gray-500 text-sm">Loading...</div>
         )}
 
-        {!isLoading && conversations.length === 0 && (
+        {!isLoading && filtered.length === 0 && (
           <div className="p-4 text-gray-500 text-sm">
-            No conversations yet. Configure a channel and start receiving messages.
+            {search.trim() ? "No matches found." : "No conversations yet. Configure a channel and start receiving messages."}
           </div>
         )}
 
-        {conversations.map((conv: any) => {
+        {filtered.map((conv: any) => {
           const contact = conv.contact as any;
           const unread = unreadCounts[conv.id] ?? conv.unreadCount ?? 0;
           const isActive = conv.id === activeConversationId;

@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import toast from "react-hot-toast";
 import { api } from "../../api/client";
 
 type Channel = {
@@ -59,7 +60,9 @@ export function SettingsPage() {
       setShowAdd(false);
       setAddForm({ name: "" });
       setSelectedType("");
+      toast.success("Channel added");
     },
+    onError: () => toast.error("Failed to add channel"),
   });
 
   const updateChannel = useMutation({
@@ -71,7 +74,9 @@ export function SettingsPage() {
       queryClient.invalidateQueries({ queryKey: ["channels"] });
       setEditingChannel(null);
       setEditForm({});
+      toast.success("Channel updated");
     },
+    onError: () => toast.error("Failed to update channel"),
   });
 
   const deleteChannel = useMutation({
@@ -79,13 +84,19 @@ export function SettingsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["channels"] });
       setDeletingId(null);
+      toast.success("Channel deleted");
     },
+    onError: () => toast.error("Failed to delete channel"),
   });
 
   const toggleChannel = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
       api.updateChannel(id, { isActive }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["channels"] }),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["channels"] });
+      toast.success(vars.isActive ? "Channel enabled" : "Channel disabled");
+    },
+    onError: () => toast.error("Failed to update channel"),
   });
 
   function startEdit(ch: Channel) {

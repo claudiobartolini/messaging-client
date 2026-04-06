@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { Toaster } from 'react-hot-toast'
 import './index.css'
 import App from './App.tsx'
 import keycloak from './keycloak'
@@ -14,6 +15,10 @@ function renderApp() {
     <StrictMode>
       <QueryClientProvider client={queryClient}>
         <App />
+        <Toaster
+          position="bottom-right"
+          toastOptions={{ style: { background: "#1f2937", color: "#e5e7eb", border: "1px solid #374151" } }}
+        />
       </QueryClientProvider>
     </StrictMode>,
   )
