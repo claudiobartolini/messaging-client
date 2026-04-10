@@ -12,6 +12,10 @@ RUN pnpm --filter @messaging/api db:generate
 RUN pnpm --filter @messaging/api build
 # Bundle the API with its production deps into a standalone directory
 RUN pnpm --filter @messaging/api deploy --prod --legacy /app/api-standalone
+# Regenerate Prisma client inside the standalone so .prisma/client/ is present
+WORKDIR /app/api-standalone
+COPY apps/api/prisma prisma/
+RUN node node_modules/prisma/build/index.js generate
 
 # ---- runner ----
 FROM node:22-alpine AS runner
