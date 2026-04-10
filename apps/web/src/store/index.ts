@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Conversation, Message } from "@messaging/shared";
+import type { Message } from "@messaging/shared";
 
 interface AppState {
   activeConversationId: string | null;

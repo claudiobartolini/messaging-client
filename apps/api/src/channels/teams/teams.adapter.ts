@@ -40,11 +40,6 @@ export class TeamsAdapter implements ChannelAdapter {
         contactName,
         body: activity.text,
         sentAt: activity.timestamp ?? new Date().toISOString(),
-        metadata: {
-          serviceUrl: activity.serviceUrl,
-          conversationId: activity.conversation?.id,
-          botId: activity.recipient?.id,
-        },
       },
     ];
   }

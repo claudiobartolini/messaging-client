@@ -6,7 +6,7 @@ import jwksClient from "jwks-rsa";
 import { Server } from "socket.io";
 import { createAdapter } from "@socket.io/redis-adapter";
 import Redis from "ioredis";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import { ZodError } from "zod";
 import { registry } from "./channels/registry";
 import { WhatsAppAdapter } from "./channels/whatsapp/whatsapp.adapter";
@@ -35,11 +35,11 @@ async function start() {
     rateLimit: true,
   });
   await app.register(fjwt, {
-    secret: (_request: unknown, token: { header: { kid?: string } }, callback: (err: Error | null, secret?: string) => void) => {
+    secret: ((_request: unknown, token: { header: { kid?: string } }, callback: (err: Error | null, secret?: string) => void) => {
       jwks.getSigningKey(token.header.kid, (err, key) => {
         callback(err, key?.getPublicKey());
       });
-    },
+    }) as any,
     verify: { algorithms: ["RS256"] },
   });
 
@@ -47,9 +47,10 @@ async function start() {
     if (error instanceof ZodError) {
       return reply.status(400).send({ error: "Validation failed", details: error.flatten().fieldErrors });
     }
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      if (error.code === "P2025") return reply.status(404).send({ error: "Not found" });
-      if (error.code === "P2002") return reply.status(409).send({ error: "Already exists" });
+    const prismaCode = (error as any)?.code;
+    if (typeof prismaCode === "string") {
+      if (prismaCode === "P2025") return reply.status(404).send({ error: "Not found" });
+      if (prismaCode === "P2002") return reply.status(409).send({ error: "Already exists" });
     }
     app.log.error(error);
     const status = (error as any).statusCode ?? 500;
