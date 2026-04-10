@@ -18,6 +18,7 @@ gcloud run jobs create messaging-migrate \
   --service-account="${SA_EMAIL}" \
   --add-cloudsql-instances="${INSTANCE_CONNECTION_NAME}" \
   --set-secrets="DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest" \
+  --vpc-connector=messaging-connector \
   --command="node_modules/.bin/prisma" \
   --args="migrate,deploy" \
   --project="${PROJECT_ID}" \
@@ -28,6 +29,7 @@ gcloud run jobs update messaging-migrate \
   --service-account="${SA_EMAIL}" \
   --add-cloudsql-instances="${INSTANCE_CONNECTION_NAME}" \
   --set-secrets="DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest" \
+  --vpc-connector=messaging-connector \
   --command="node_modules/.bin/prisma" \
   --args="migrate,deploy" \
   --project="${PROJECT_ID}"
@@ -48,6 +50,7 @@ gcloud run deploy messaging-api \
   --service-account="${SA_EMAIL}" \
   --add-cloudsql-instances="${INSTANCE_CONNECTION_NAME}" \
   --set-secrets="DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest" \
+  --vpc-connector=messaging-connector \
   --port=3001 \
   --min-instances=1 \
   --project="${PROJECT_ID}"
