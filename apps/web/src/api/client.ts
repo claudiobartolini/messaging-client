@@ -1,6 +1,6 @@
 import keycloak from '../keycloak';
 
-const BASE = "/api";
+const BASE = (import.meta.env.VITE_API_URL ?? "") + "/api";
 
 const authDisabled = !import.meta.env.VITE_KEYCLOAK_URL || import.meta.env.VITE_KEYCLOAK_URL === 'https://your-keycloak-host';
 

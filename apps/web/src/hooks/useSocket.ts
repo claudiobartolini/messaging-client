@@ -14,7 +14,7 @@ export function useSocket() {
 
   useEffect(() => {
     if (!socket) {
-      socket = io({ path: "/socket.io" });
+      socket = io(import.meta.env.VITE_API_URL ?? "", { path: "/socket.io" });
     }
 
     socket.on("message:new", (message: any) => {

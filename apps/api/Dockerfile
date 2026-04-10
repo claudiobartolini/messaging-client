@@ -20,6 +20,8 @@ RUN apk add --no-cache openssl
 
 WORKDIR /app
 COPY --from=builder /app/api-standalone .
+# Migrations must be present for `prisma migrate deploy` in the Cloud Run Job
+COPY --from=builder /app/apps/api/prisma ./prisma
 
 EXPOSE 3001
 CMD ["node", "dist/main.js"]

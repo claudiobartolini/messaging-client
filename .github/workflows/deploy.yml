@@ -1,0 +1,160 @@
+name: Deploy to Cloud Run
+
+# Option B deployment: API and web run on separate Cloud Run URLs.
+# VITE_API_URL is baked into the web image at build time.
+#
+# Required GitHub Actions configuration:
+#   Repository variables (Settings → Variables):
+#     GCP_PROJECT_ID  — GCP project ID (e.g. skynet-messaging)
+#     GCP_REGION      — GCP region (default: europe-west1)
+#     VITE_API_URL    — API Cloud Run URL, set after first deploy of messaging-api
+#                       (e.g. https://messaging-api-xxxx-ew.a.run.app)
+#   Repository secrets (Settings → Secrets):
+#     WIF_PROVIDER        — Workload Identity Federation provider resource name
+#     WIF_SERVICE_ACCOUNT — Service account email for WIF
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      vite_api_url:
+        description: "Override VITE_API_URL for this run (leave empty to use repo variable)"
+        required: false
+        default: ""
+
+env:
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  REGION: ${{ vars.GCP_REGION || 'europe-west1' }}
+  REGISTRY: ${{ vars.GCP_REGION || 'europe-west1' }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/messaging
+
+jobs:
+  # ── Build & push both images ────────────────────────────────────────────────
+  build:
+    name: Build & push images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # required for Workload Identity Federation
+
+    outputs:
+      api_image: ${{ steps.meta.outputs.api_image }}
+      web_image: ${{ steps.meta.outputs.web_image }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Set image tags
+        id: meta
+        run: |
+          SHA="${GITHUB_SHA::8}"
+          echo "api_image=${{ env.REGISTRY }}/api:${SHA}" >> "$GITHUB_OUTPUT"
+          echo "web_image=${{ env.REGISTRY }}/web:${SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push API image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.api_image }}
+            ${{ env.REGISTRY }}/api:latest
+
+      - name: Build & push web image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          build-args: |
+            VITE_API_URL=${{ github.event.inputs.vite_api_url || vars.VITE_API_URL }}
+          tags: |
+            ${{ steps.meta.outputs.web_image }}
+            ${{ env.REGISTRY }}/web:latest
+
+  # ── Run DB migrations ───────────────────────────────────────────────────────
+  migrate:
+    name: Run DB migrations
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Update migration job image
+        run: |
+          gcloud run jobs update messaging-migrate \
+            --image="${{ needs.build.outputs.api_image }}" \
+            --region="${{ env.REGION }}" \
+            --project="${{ env.PROJECT_ID }}"
+
+      - name: Execute migrations
+        run: |
+          gcloud run jobs execute messaging-migrate \
+            --region="${{ env.REGION }}" \
+            --project="${{ env.PROJECT_ID }}" \
+            --wait
+
+  # ── Deploy API and web in parallel after migration ──────────────────────────
+  deploy-api:
+    name: Deploy API
+    needs: [build, migrate]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Deploy messaging-api
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: messaging-api
+          image: ${{ needs.build.outputs.api_image }}
+          region: ${{ env.REGION }}
+          project_id: ${{ env.PROJECT_ID }}
+
+  deploy-web:
+    name: Deploy web
+    needs: [build, migrate]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Deploy messaging-web
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: messaging-web
+          image: ${{ needs.build.outputs.web_image }}
+          region: ${{ env.REGION }}
+          project_id: ${{ env.PROJECT_ID }}
