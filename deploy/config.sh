@@ -5,7 +5,7 @@
 set -euo pipefail
 
 # ── Required — fill these in ─────────────────────────────────────────────────
-export PROJECT_ID="${PROJECT_ID:-skynet-messaging}"
+export PROJECT_ID="${PROJECT_ID:-skynet-gcp-network}"
 export REGION="${REGION:-europe-west1}"
 export INSTANCE_CONNECTION_NAME="${INSTANCE_CONNECTION_NAME:-${PROJECT_ID}:${REGION}:messaging-db}"
 export SA_EMAIL="${SA_EMAIL:-messaging-api@${PROJECT_ID}.iam.gserviceaccount.com}"
