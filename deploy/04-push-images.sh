@@ -6,15 +6,18 @@
 # Usage:
 #   PROJECT_ID=skynet-messaging bash deploy/04-push-images.sh
 #
-# Optional:
+# For Option A (single domain + load balancer), VITE_API_URL is not needed —
+# the frontend calls /api, /webhooks, /socket.io relative to the same domain.
+# For Option B (separate domains), pass the API URL explicitly:
 #   VITE_API_URL=https://messaging-api-xxxx-ew.a.run.app \
 #     PROJECT_ID=skynet-messaging bash deploy/04-push-images.sh
-#   (Only needed if deploying web with separate API domain — Option B)
 
 set -euo pipefail
 source "$(dirname "$0")/config.sh"
 
-VITE_API_URL="${VITE_API_URL:?Set VITE_API_URL to the API Cloud Run URL before building (e.g. https://messaging-api-xxxx-ew.a.run.app). Run 05-deploy-api.sh first to get it.}"
+# Option A: leave empty — LB routes /api/* to the API service
+# Option B: set to the API Cloud Run URL
+VITE_API_URL="${VITE_API_URL:-}"
 
 echo "==> Creating Artifact Registry repository 'messaging'..."
 gcloud artifacts repositories create messaging \

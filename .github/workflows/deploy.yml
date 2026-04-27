@@ -1,14 +1,14 @@
 name: Deploy to Cloud Run
 
-# Option B deployment: API and web run on separate Cloud Run URLs.
-# VITE_API_URL is baked into the web image at build time.
+# Option A deployment: API and web served from a single custom domain via a
+# GCP HTTPS Load Balancer (path-based routing). VITE_API_URL should be left
+# empty — the frontend calls /api, /webhooks, /socket.io relative to origin.
 #
 # Required GitHub Actions configuration:
 #   Repository variables (Settings → Variables):
-#     GCP_PROJECT_ID  — GCP project ID (e.g. skynet-messaging)
+#     GCP_PROJECT_ID  — GCP project ID (e.g. skynet-gcp-network)
 #     GCP_REGION      — GCP region (default: europe-west1)
-#     VITE_API_URL    — API Cloud Run URL, set after first deploy of messaging-api
-#                       (e.g. https://messaging-api-xxxx-ew.a.run.app)
+#     VITE_API_URL    — leave unset or empty for Option A (single domain)
 #   Repository secrets (Settings → Secrets):
 #     WIF_PROVIDER        — Workload Identity Federation provider resource name
 #     WIF_SERVICE_ACCOUNT — Service account email for WIF

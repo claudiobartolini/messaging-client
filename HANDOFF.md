@@ -49,6 +49,19 @@ A multi-channel messaging inbox built as a pnpm + Turborepo monorepo. Lets you r
 
 ---
 
+## Pending — Option A migration (single domain load balancer)
+
+The infrastructure is currently running **Option B** (separate Cloud Run URLs, `VITE_API_URL` baked into the web image). The codebase is already prepared for **Option A** (one custom domain, GCP HTTPS LB with path-based routing). To complete the switch:
+
+1. **Run the load balancer script** once you have a domain:
+   ```bash
+   DOMAIN=yourdomain.com PROJECT_ID=skynet-gcp-network bash deploy/07-load-balancer.sh
+   ```
+2. **Rebuild the web image without `VITE_API_URL`**: go to GitHub → Settings → Variables → delete or clear `VITE_API_URL`, then push to `main` to trigger a redeploy. The frontend already handles an empty `VITE_API_URL` (calls `/api/...` relative to origin).
+3. **Remove gotcha #5** (Socket.IO with separate domains) from the Known issues section below once Option A is live.
+
+---
+
 ## What still needs to happen before end-to-end test
 
 ### Task 7 — Register WhatsApp webhook + test

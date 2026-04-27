@@ -24,7 +24,7 @@ gcloud services enable \
   sqladmin.googleapis.com \
   artifactregistry.googleapis.com \
   secretmanager.googleapis.com \
-  vpcaccess.googleapis.com \
+  compute.googleapis.com \
   cloudresourcemanager.googleapis.com \
   iam.googleapis.com \
   --project=skynet-gcp-network
@@ -190,6 +190,45 @@ set_secret WIF_SERVICE_ACCOUNT "messaging-api@skynet-gcp-network.iam.gserviceacc
 
 ---
 
+---
+
+## Task 6 — HTTPS Load Balancer (single domain, Option A)
+
+Depends on: Tasks 1, 5 (both Cloud Run services must be deployed first).
+
+This creates a GCP Application Load Balancer that routes traffic on a single
+custom domain:
+
+| Path prefix | Destination |
+|-------------|-------------|
+| `/api`, `/api/*` | `messaging-api` Cloud Run service |
+| `/webhooks`, `/webhooks/*` | `messaging-api` Cloud Run service |
+| `/socket.io`, `/socket.io/*` | `messaging-api` Cloud Run service |
+| everything else | `messaging-web` Cloud Run service |
+
+```bash
+DOMAIN=dashboard.example.com \
+  PROJECT_ID=skynet-gcp-network \
+  bash deploy/07-load-balancer.sh
+```
+
+The script prints the load balancer IP at the end. After running:
+
+1. **Create an A record** in your DNS:
+   ```
+   dashboard.example.com  →  <LB IP>
+   ```
+2. **Wait ~15 min** for DNS propagation and managed SSL cert provisioning.
+   Check cert status:
+   ```bash
+   gcloud compute ssl-certificates describe messaging-cert \
+     --global --project=skynet-gcp-network \
+     --format='value(managed.status)'
+   # Should become ACTIVE
+   ```
+
+---
+
 ## Deliverables — send back to Claudio when done
 
 - [ ] Instance connection name (from Task 2)
@@ -197,3 +236,5 @@ set_secret WIF_SERVICE_ACCOUNT "messaging-api@skynet-gcp-network.iam.gserviceacc
 - [ ] Confirmation that `REDIS_URL` secret is in Secret Manager
 - [ ] WIF provider name (from Task 4)
 - [ ] Confirmation that `WIF_PROVIDER` and `WIF_SERVICE_ACCOUNT` secrets are set on GitHub
+- [ ] Load balancer IP (from Task 6)
+- [ ] Domain + DNS A record pointed at LB IP

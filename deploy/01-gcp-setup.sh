@@ -15,6 +15,7 @@ gcloud services enable \
   artifactregistry.googleapis.com \
   secretmanager.googleapis.com \
   vpcaccess.googleapis.com \
+  compute.googleapis.com \
   cloudresourcemanager.googleapis.com \
   --project="${PROJECT_ID}"
 
