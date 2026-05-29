@@ -70,8 +70,12 @@ export function MessageThread() {
     onSuccess: (savedMessage, _vars, context) => {
       queryClient.setQueryData(
         ["messages", activeConversationId],
-        (old: any[] = []) =>
-          old.map((m) => (m.id === context?.optimisticId ? savedMessage : m))
+        (old: any[] = []) => {
+          const without = old.filter(
+            (m) => m.id !== context?.optimisticId && m.id !== savedMessage.id
+          );
+          return [...without, savedMessage];
+        }
       );
     },
     onError: (_err, _vars, context) => {
