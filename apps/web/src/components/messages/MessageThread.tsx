@@ -67,7 +67,7 @@ export function MessageThread() {
       );
       return { previous, optimisticId: optimistic.id };
     },
-    onSuccess: (savedMessage, _vars, context) => {
+    onSuccess: (savedMessage: any, _vars, context) => {
       queryClient.setQueryData(
         ["messages", activeConversationId],
         (old: any[] = []) => {
