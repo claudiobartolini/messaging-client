@@ -1,0 +1,11 @@
+{
+  "bindings": [
+    {
+      "role": "roles/iam.workloadIdentityUser",
+      "members": [
+        "principalSet://iam.googleapis.com/projects/507526882837/locations/global/workloadIdentityPools/github-pool/attribute.repository/claudiobartolini/messaging-client"
+      ]
+    }
+  ],
+  "etag": "ACAB"
+}
