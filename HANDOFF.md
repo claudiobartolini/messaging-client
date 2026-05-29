@@ -1,14 +1,15 @@
 # Project Handoff: messaging-client
 
 ## What this is
-A multi-channel messaging inbox built as a pnpm + Turborepo monorepo. Lets you receive and reply to messages from multiple channels (WhatsApp, Teams) in a unified 3-panel UI.
+A multi-channel messaging inbox built as a pnpm + Turborepo monorepo. Lets you receive and reply to messages from multiple channels (WhatsApp via Vonage, Microsoft Teams) in a unified 3-panel UI.
 
-**GitHub:** https://github.com/claudiobartolini/messaging-client
+**GitHub (personal):** https://github.com/claudiobartolini/messaging-client
+**GitHub (org):** https://github.com/Skynet-Technology-Develop/messaging-client
 **Stack:** Fastify API + Prisma + PostgreSQL + Redis + Socket.IO (backend), React 19 + Vite + Zustand + TanStack Query (frontend)
 
 ---
 
-## Deployment status (as of 2026-04-10)
+## Deployment status (as of 2026-05-29)
 
 ### GCP project: `skynet-gcp-network` (project number `507526882837`)
 
@@ -27,6 +28,11 @@ A multi-channel messaging inbox built as a pnpm + Turborepo monorepo. Lets you r
 | Artifact Registry | `europe-west1-docker.pkg.dev/skynet-gcp-network/messaging/` |
 | Service account | `messaging-api@skynet-gcp-network.iam.gserviceaccount.com` |
 | WIF pool/provider | `github-pool` / `github-provider` |
+
+### Service account IAM roles (all granted)
+- `roles/artifactregistry.writer` — push images to Artifact Registry
+- `roles/run.developer` — deploy Cloud Run services and jobs
+- `roles/iam.serviceAccountUser` — act as service accounts during deploy
 
 ### Secrets in Secret Manager
 | Secret | Contains |
@@ -49,53 +55,65 @@ A multi-channel messaging inbox built as a pnpm + Turborepo monorepo. Lets you r
 
 ---
 
-## Pending — Option A migration (single domain load balancer)
+## Active channels (configured in DB)
 
-The infrastructure is currently running **Option B** (separate Cloud Run URLs, `VITE_API_URL` baked into the web image). The codebase is already prepared for **Option A** (one custom domain, GCP HTTPS LB with path-based routing). To complete the switch:
+### WhatsApp via Vonage
+Skynet uses Vonage as their WhatsApp BSP. A new `vonage` channel adapter was added alongside the original `whatsapp` adapter.
 
-1. **Run the load balancer script** once you have a domain:
-   ```bash
-   DOMAIN=yourdomain.com PROJECT_ID=skynet-gcp-network bash deploy/07-load-balancer.sh
-   ```
-2. **Rebuild the web image without `VITE_API_URL`**: go to GitHub → Settings → Variables → delete or clear `VITE_API_URL`, then push to `main` to trigger a redeploy. The frontend already handles an empty `VITE_API_URL` (calls `/api/...` relative to origin).
-3. **Remove gotcha #5** (Socket.IO with separate domains) from the Known issues section below once Option A is live.
+| Field | Value |
+|---|---|
+| Channel type | `vonage` |
+| From number | `+390553980466` |
+| Vonage Application | configured — inbound + status URL both point to `/webhooks/vonage` |
+| API Key / Secret | stored in channel config in DB (not in codebase) |
+| Status | ✅ Inbound and outbound tested and working |
 
----
+### Microsoft Teams
+| Field | Value |
+|---|---|
+| Channel type | `teams` |
+| Azure Bot name | `messaging-bot` |
+| Azure Bot App ID | `d71e49d8-4263-4d9d-b204-c8e7e8ceacd1` |
+| Azure AD Tenant ID | `463d4265-fcf2-475e-b0d6-4d53cf2fffcd` |
+| Messaging endpoint | `https://messaging-api-507526882837.europe-west1.run.app/webhooks/teams` |
+| App ID + Secret | stored in channel config in DB (not in codebase) |
+| Status | ✅ Inbound and outbound tested and working |
 
-## What still needs to happen before end-to-end test
-
-### Task 7 — Register WhatsApp webhook + test
-1. Go to **Meta for Developers → your app → WhatsApp → Configuration**
-   - Callback URL: `https://messaging-api-507526882837.europe-west1.run.app/webhooks/whatsapp`
-   - Verify token: the string you used when first setting up the webhook
-2. Open `https://messaging-web-507526882837.europe-west1.run.app` → Settings → Add WhatsApp channel:
-   - Phone Number ID: `1044544528747410`
-   - WhatsApp Business Account ID: `933045345786972`
-   - Access Token: long-lived System User token from Meta Business Suite
-   - Verify Token: same string as above
-3. Send a WhatsApp message to the test number → should appear in the inbox in real time
-4. Reply from dashboard → verify delivery + read receipts (✓ → ✓✓ grey → ✓✓ blue)
-
-### Keycloak (pending — was pending Friday in previous session too)
-All code is written. Just needs real values in the environment:
-- `KEYCLOAK_URL`, `KEYCLOAK_REALM`, `KEYCLOAK_CLIENT_ID` → add as secrets in Secret Manager + mount in Cloud Run
-- `VITE_KEYCLOAK_URL`, `VITE_KEYCLOAK_REALM`, `VITE_KEYCLOAK_CLIENT_ID` → add as build-time env vars, rebuild web image
-
-### Teams channel
-- Blocked on Azure AD App Registration (needs work/school account)
-- Microsoft App ID: `91326745-ce2f-411c-bcbb-bc32596dd026`
-- App Tenant ID: `99f5c844-7eaf-4d36-881f-20829ad20273`
+> **Note:** There is an unused App Registration `b51e84a6-9fff-490a-b9ce-5b227078d7e3` created during setup — it can be deleted from Azure AD.
 
 ---
 
 ## CI/CD (GitHub Actions)
 
-Push to `main` → builds both Docker images for `linux/amd64` → runs `prisma migrate deploy` via Cloud Run Job → deploys API and web in parallel.
+Push to `main` on either remote → builds both Docker images for `linux/amd64` → runs `prisma migrate deploy` via Cloud Run Job → deploys API and web in parallel. **All jobs are now fully green.**
+
+CI/CD is configured on the personal repo (`claudiobartolini/messaging-client`). The Skynet org repo (`Skynet-Technology-Develop/messaging-client`) is a mirror — push to both remotes to keep them in sync.
 
 **Important:** Images must be built for `linux/amd64`. Locally use:
 ```bash
 docker buildx build --platform=linux/amd64 ...
 ```
+
+---
+
+## Pending work
+
+### Teams — attachment/image support
+When a Teams user sends an image or file, it currently does not appear in the inbox. The adapter only processes text messages. Two levels of fix available:
+- **Basic:** Show `📎 filename.ext` in the message body — ~30 min
+- **Full:** Backend proxy endpoint that fetches the file with a Bot Framework token and streams it to the browser, frontend renders images inline — ~2-3 hours
+
+### Keycloak authentication
+All code is written. Just needs real values added to the environment:
+- `KEYCLOAK_URL`, `KEYCLOAK_REALM`, `KEYCLOAK_CLIENT_ID` → add as secrets in Secret Manager + mount in Cloud Run
+- `VITE_KEYCLOAK_URL`, `VITE_KEYCLOAK_REALM`, `VITE_KEYCLOAK_CLIENT_ID` → add as build-time GitHub Actions variables, then push to trigger a web rebuild
+
+### Option A — single domain load balancer
+The domain `xcall.it` is reserved. The LB script is ready at `deploy/07-load-balancer.sh`:
+```bash
+DOMAIN=xcall.it PROJECT_ID=skynet-gcp-network bash deploy/07-load-balancer.sh
+```
+After running: create DNS A record, wait ~15 min for SSL cert, clear `VITE_API_URL` in GitHub Actions variables and push to redeploy the web image.
 
 ---
 
@@ -113,13 +131,17 @@ docker buildx build --platform=linux/amd64 ...
 
 3. **Prisma client in standalone** — `apps/api/Dockerfile` runs `prisma generate` inside `api-standalone` after `pnpm deploy --prod`. This is required — do not remove that step.
 
-4. **DB password** — stored only in Secret Manager as part of `DATABASE_URL`. Not written anywhere else. If you need it, read the secret: `gcloud secrets versions access latest --secret=DATABASE_URL --project=skynet-gcp-network`
+4. **DB password** — stored only in Secret Manager as part of `DATABASE_URL`. If you need it: `gcloud secrets versions access latest --secret=DATABASE_URL --project=skynet-gcp-network`
 
-5. **Socket.IO with separate domains** — `VITE_API_URL` is baked into the web image at build time. If the API URL ever changes, rebuild the web image with the new URL.
+5. **Socket.IO with separate domains** — `VITE_API_URL` is baked into the web image at build time. If the API URL ever changes, rebuild the web image with the new URL. Resolved once Option A (single domain LB) is live.
+
+6. **Teams serviceUrl** — outbound Teams messages require `serviceUrl::conversationId` as the `to` address. This is stored correctly for all new conversations. Any conversations created before 2026-05-29 in the DB have the old format and cannot receive replies — they can be ignored.
+
+7. **Git credentials** — the macOS Keychain credential for GitHub was cleared during setup. Future `git push origin` will prompt for re-authentication via browser. Use `git push <url-with-pat> main` as a workaround if needed.
 
 ---
 
-## Local development (unchanged)
+## Local development
 
 ```bash
 # Prerequisites: Node 20+, pnpm, Docker
@@ -132,16 +154,3 @@ pnpm --filter @messaging/api db:migrate
 pnpm dev
 # API: localhost:3001 — Web: localhost:5173
 ```
-
----
-
-## WhatsApp credentials (keep safe)
-- **Phone Number ID:** `1044544528747410`
-- **WhatsApp Business Account ID:** `933045345786972`
-- **Access Token:** long-lived System User token from Meta Business Suite (never expires) — store in password manager
-- **Verify Token:** the string you chose in Meta's dashboard
-
-## Azure credentials (Teams — incomplete)
-- **Microsoft App ID:** `91326745-ce2f-411c-bcbb-bc32596dd026`
-- **App Tenant ID:** `99f5c844-7eaf-4d36-881f-20829ad20273`
-- **Client Secret:** NOT YET CREATED
