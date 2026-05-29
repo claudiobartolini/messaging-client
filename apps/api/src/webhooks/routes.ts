@@ -48,8 +48,31 @@ export async function webhookRoutes(app: FastifyInstance) {
         data: { channelId: channel.id, payload: request.body as object },
       });
 
-      // Handle WhatsApp delivery/read status updates
       const body = request.body as any;
+
+      // Vonage status update: flat payload with top-level `status`, no `entry` or `message`
+      if (body.status && !body.message && !body.entry) {
+        const messageUuid = body.message_uuid;
+        const status = body.status as string;
+        const ts = body.timestamp ? new Date(body.timestamp) : new Date();
+        try {
+          await (app as any).prisma.message.updateMany({
+            where: { externalId: messageUuid },
+            data: {
+              status,
+              deliveredAt: status === "delivered" ? ts : undefined,
+              readAt: status === "read" ? ts : undefined,
+            },
+          });
+          const msg = await (app as any).prisma.message.findFirst({ where: { externalId: messageUuid } });
+          if (msg) (app as any).io.to(`conversation:${msg.conversationId}`).emit("message:updated", msg);
+        } catch (err) {
+          app.log.error({ err, body }, "Failed to update Vonage message status");
+        }
+        return reply.send({ status: "ok" });
+      }
+
+      // Handle WhatsApp (Meta) delivery/read status updates
       const entries = body?.entry ?? [];
       for (const entry of entries) {
         for (const change of entry?.changes ?? []) {

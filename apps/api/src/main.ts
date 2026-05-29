@@ -11,6 +11,7 @@ import { ZodError } from "zod";
 import { registry } from "./channels/registry";
 import { WhatsAppAdapter } from "./channels/whatsapp/whatsapp.adapter";
 import { TeamsAdapter } from "./channels/teams/teams.adapter";
+import { VonageAdapter } from "./channels/vonage/vonage.adapter";
 import { webhookRoutes } from "./webhooks/routes";
 import { channelRoutes } from "./settings/channel.routes";
 import { conversationRoutes } from "./conversations/routes";
@@ -22,6 +23,7 @@ async function start() {
   // Register adapters
   registry.register(new WhatsAppAdapter());
   registry.register(new TeamsAdapter());
+  registry.register(new VonageAdapter());
 
   // Plugins
   await app.register(cors, { origin: true });
