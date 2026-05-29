@@ -27,16 +27,16 @@ export class TeamsAdapter implements ChannelAdapter {
 
     if (activity.type !== "message" || !activity.text) return [];
 
-    const contactId = activity.from?.id ?? "unknown";
     const contactName = activity.from?.name;
-    const conversationId = activity.conversation?.id ?? contactId;
+    const conversationId = activity.conversation?.id ?? activity.from?.id ?? "unknown";
+    const serviceUrl = (activity.serviceUrl ?? "").replace(/\/$/, "");
 
     return [
       {
         externalId: activity.id,
         channelId: activity.channelId ?? "msteams",
         direction: "inbound",
-        contactId: conversationId,
+        contactId: `${serviceUrl}::${conversationId}`,
         contactName,
         body: activity.text,
         sentAt: activity.timestamp ?? new Date().toISOString(),
@@ -65,7 +65,7 @@ export class TeamsAdapter implements ChannelAdapter {
     const [serviceUrl, conversationId] = to.split("::");
 
     const response = await axios.post(
-      `${serviceUrl}v3/conversations/${conversationId}/activities`,
+      `${serviceUrl}/v3/conversations/${conversationId}/activities`,
       {
         type: "message",
         text: message.body,
