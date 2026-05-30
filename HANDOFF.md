@@ -98,6 +98,13 @@ docker buildx build --platform=linux/amd64 ...
 
 ## Pending work
 
+### Sarah co-pilot integration — turn forwarding
+Full implementation plan is in `PLAN.md` at the repo root. Summary:
+- New `apps/api/src/services/sarah.ts` — BullMQ queue + worker that POSTs every conversation turn (inbound and outbound, all channels) to `SARAH_WEBHOOK_URL`
+- Hook into `apps/api/src/webhooks/routes.ts` (inbound) and `apps/api/src/conversations/routes.ts` (outbound)
+- At-least-once delivery: jobs persist in Redis, retry up to 5×with exponential backoff; `messageId` in payload lets Sarah deduplicate
+- No DB changes, no auth changes, no UI changes — just add `SARAH_WEBHOOK_URL` env var
+
 ### Teams — attachment/image support
 When a Teams user sends an image or file, it currently does not appear in the inbox. The adapter only processes text messages. Two levels of fix available:
 - **Basic:** Show `📎 filename.ext` in the message body — ~30 min
