@@ -98,4 +98,46 @@ export async function conversationRoutes(app: FastifyInstance) {
       }
     }
   );
+
+  // Claim a conversation
+  app.patch<{ Params: { id: string }; Body: { operatorName: string } }>(
+    "/:id/claim",
+    async (request, reply) => {
+      const conversation = await prisma.conversation.update({
+        where: { id: request.params.id },
+        data: { assignedTo: request.body.operatorName, claimedAt: new Date() },
+        include: { channel: { select: { type: true, name: true } } },
+      });
+      (app as any).io.to(`channel:${conversation.channelId}`).emit("conversation:updated", conversation);
+      return reply.send(conversation);
+    }
+  );
+
+  // Release a conversation
+  app.patch<{ Params: { id: string } }>(
+    "/:id/release",
+    async (request, reply) => {
+      const conversation = await prisma.conversation.update({
+        where: { id: request.params.id },
+        data: { assignedTo: null, claimedAt: null },
+        include: { channel: { select: { type: true, name: true } } },
+      });
+      (app as any).io.to(`channel:${conversation.channelId}`).emit("conversation:updated", conversation);
+      return reply.send(conversation);
+    }
+  );
+
+  // Update conversation status
+  app.patch<{ Params: { id: string }; Body: { status: string } }>(
+    "/:id/status",
+    async (request, reply) => {
+      const conversation = await prisma.conversation.update({
+        where: { id: request.params.id },
+        data: { status: request.body.status },
+        include: { channel: { select: { type: true, name: true } } },
+      });
+      (app as any).io.to(`channel:${conversation.channelId}`).emit("conversation:updated", conversation);
+      return reply.send(conversation);
+    }
+  );
 }

@@ -25,6 +25,9 @@ model Conversation {
   channelId       String
   externalId      String
   contact         Json
+  status          String    @default("open")  // "open" | "pending" | "closed"
+  assignedTo      String?
+  claimedAt       DateTime?
   lastMessageAt   DateTime  @default(now())
   lastMessageBody String?
   unreadCount     Int       @default(0)

@@ -3,14 +3,22 @@ import { io, Socket } from "socket.io-client";
 import { useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { useAppStore } from "../store";
+import { api } from "../api/client";
 
 let socket: Socket | null = null;
 
+// Request browser notification permission once
+if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+  Notification.requestPermission();
+}
+
 export function useSocket() {
   const queryClient = useQueryClient();
-  const { activeConversationId, incrementUnread } = useAppStore();
+  const { activeConversationId, incrementUnread, operatorName } = useAppStore();
   const activeConvRef = useRef(activeConversationId);
+  const operatorNameRef = useRef(operatorName);
   activeConvRef.current = activeConversationId;
+  operatorNameRef.current = operatorName;
 
   useEffect(() => {
     if (!socket) {
@@ -31,6 +39,59 @@ export function useSocket() {
       // Increment unread if not active conversation
       if (activeConvRef.current !== message.conversationId) {
         incrementUnread(message.conversationId);
+      }
+
+      // Notify operator of new unclaimed inbound messages
+      if (message.direction === "inbound" && activeConvRef.current !== message.conversationId) {
+        const conversations: any[] = queryClient.getQueryData(["conversations"]) ?? [];
+        const conv = conversations.find((c: any) => c.id === message.conversationId);
+        if (conv && !conv.assignedTo) {
+          const contactName = (conv.contact as any)?.name ?? (conv.contact as any)?.id ?? "Unknown";
+          const channelName = conv.channel?.name ?? conv.channel?.type ?? "";
+          const notifBody = `${message.body ?? "New message"} — via ${channelName}`;
+
+          if (Notification.permission === "granted") {
+            const n = new Notification(`New message from ${contactName}`, {
+              body: notifBody,
+              tag: conv.id,
+            });
+            n.onclick = () => {
+              window.focus();
+              if (operatorNameRef.current) {
+                api.claimConversation(conv.id, operatorNameRef.current).then(() => {
+                  queryClient.invalidateQueries({ queryKey: ["conversations"] });
+                  useAppStore.getState().setActiveConversation(conv.id);
+                }).catch(() => {});
+              } else {
+                useAppStore.getState().setActiveConversation(conv.id);
+              }
+              n.close();
+            };
+          } else {
+            toast(
+              (t) => (
+                <span>
+                  <strong>{contactName}</strong>: {message.body ?? "New message"}
+                  {operatorNameRef.current && (
+                    <button
+                      className="ml-2 text-indigo-400 underline text-xs"
+                      onClick={() => {
+                        api.claimConversation(conv.id, operatorNameRef.current).then(() => {
+                          queryClient.invalidateQueries({ queryKey: ["conversations"] });
+                          useAppStore.getState().setActiveConversation(conv.id);
+                        }).catch(() => {});
+                        toast.dismiss(t.id);
+                      }}
+                    >
+                      Claim
+                    </button>
+                  )}
+                </span>
+              ),
+              { duration: 8000 }
+            );
+          }
+        }
       }
     });
 

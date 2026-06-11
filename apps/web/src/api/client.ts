@@ -36,4 +36,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ body }),
     }),
+  claimConversation: (conversationId: string, operatorName: string) =>
+    req(`/conversations/${conversationId}/claim`, {
+      method: "PATCH",
+      body: JSON.stringify({ operatorName }),
+    }),
+  releaseConversation: (conversationId: string) =>
+    req(`/conversations/${conversationId}/release`, { method: "PATCH" }),
+  updateConversationStatus: (conversationId: string, status: string) =>
+    req(`/conversations/${conversationId}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
 };

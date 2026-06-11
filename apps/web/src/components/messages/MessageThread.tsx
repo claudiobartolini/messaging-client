@@ -5,6 +5,14 @@ import toast from "react-hot-toast";
 import { api } from "../../api/client";
 import { useAppStore } from "../../store";
 
+const STATUS_CYCLE: Record<string, string> = { open: "pending", pending: "closed", closed: "open" };
+const STATUS_LABELS: Record<string, string> = { open: "Open", pending: "Pending", closed: "Closed" };
+const STATUS_COLORS: Record<string, string> = {
+  open: "bg-green-500/20 text-green-400 hover:bg-green-500/30",
+  pending: "bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30",
+  closed: "bg-gray-500/20 text-gray-400 hover:bg-gray-500/30",
+};
+
 function StatusIcon({ status }: { status: string }) {
   if (status === "read") {
     return <span className="text-xs text-blue-400">✓✓</span>;
@@ -37,7 +45,7 @@ function DateSeparator({ date }: { date: Date }) {
 }
 
 export function MessageThread() {
-  const { activeConversationId } = useAppStore();
+  const { activeConversationId, operatorName } = useAppStore();
   const queryClient = useQueryClient();
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -46,6 +54,31 @@ export function MessageThread() {
     queryKey: ["messages", activeConversationId],
     queryFn: () => api.getMessages(activeConversationId!),
     enabled: !!activeConversationId,
+  });
+
+  // Get conversation metadata from list cache
+  const conversations: any[] = queryClient.getQueryData(["conversations"]) ?? [];
+  const conversation = conversations.find((c: any) => c.id === activeConversationId);
+  const isMine = conversation?.assignedTo === operatorName;
+  const isClaimedByOther = !!conversation?.assignedTo && !isMine;
+  const isLocked = isClaimedByOther;
+
+  const claim = useMutation({
+    mutationFn: () => api.claimConversation(activeConversationId!, operatorName),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["conversations"] }),
+    onError: () => toast.error("Could not claim conversation"),
+  });
+
+  const release = useMutation({
+    mutationFn: () => api.releaseConversation(activeConversationId!),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["conversations"] }),
+    onError: () => toast.error("Could not release conversation"),
+  });
+
+  const updateStatus = useMutation({
+    mutationFn: (status: string) => api.updateConversationStatus(activeConversationId!, status),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["conversations"] }),
+    onError: () => toast.error("Could not update status"),
   });
 
   const send = useMutation({
@@ -142,8 +175,55 @@ export function MessageThread() {
     );
   }
 
+  const status: string = conversation?.status ?? "open";
+  const nextStatus = STATUS_CYCLE[status] ?? "open";
+
   return (
     <div className="flex-1 flex flex-col min-w-0">
+      {/* Thread header */}
+      {conversation && (
+        <div className="px-6 py-3 border-b border-gray-800 bg-gray-900 flex items-center gap-3">
+          {/* Status toggle */}
+          <button
+            onClick={() => updateStatus.mutate(nextStatus)}
+            className={`text-xs px-3 py-1 rounded-full font-medium transition ${STATUS_COLORS[status] ?? STATUS_COLORS.open}`}
+            title={`Click to set ${nextStatus}`}
+          >
+            {STATUS_LABELS[status] ?? status}
+          </button>
+
+          {/* Claim / assignee */}
+          {!conversation.assignedTo && (
+            <button
+              onClick={() => claim.mutate()}
+              disabled={!operatorName || claim.isPending}
+              className="text-xs px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30 disabled:opacity-40 disabled:cursor-not-allowed transition font-medium"
+            >
+              Claim
+            </button>
+          )}
+          {isMine && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-indigo-400 bg-indigo-500/10 px-3 py-1 rounded-full font-medium">
+                Claimed by you
+              </span>
+              <button
+                onClick={() => release.mutate()}
+                disabled={release.isPending}
+                className="text-xs text-gray-500 hover:text-gray-300 transition"
+              >
+                Release
+              </button>
+            </div>
+          )}
+          {isClaimedByOther && (
+            <span className="text-xs text-gray-400 bg-gray-700/50 px-3 py-1 rounded-full font-medium">
+              Claimed by {conversation.assignedTo}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
         {isLoading && <p className="text-gray-500 text-sm">Loading messages...</p>}
@@ -153,23 +233,29 @@ export function MessageThread() {
 
       {/* Input */}
       <div className="px-4 py-3 border-t border-gray-800 bg-gray-900">
-        <div className="flex items-center gap-3">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-            placeholder="Type a message..."
-            className="flex-1 bg-gray-800 text-gray-200 placeholder-gray-600 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition"
-          />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || send.isPending}
-            className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl px-4 py-2.5 text-sm font-medium transition"
-          >
-            Send
-          </button>
-        </div>
+        {isLocked ? (
+          <p className="text-center text-xs text-gray-600 py-1">
+            Claimed by {conversation?.assignedTo} — you cannot reply
+          </p>
+        ) : (
+          <div className="flex items-center gap-3">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+              placeholder="Type a message..."
+              className="flex-1 bg-gray-800 text-gray-200 placeholder-gray-600 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition"
+            />
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() || send.isPending}
+              className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl px-4 py-2.5 text-sm font-medium transition"
+            >
+              Send
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
