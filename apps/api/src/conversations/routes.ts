@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { registry } from "../channels/registry";
+import { notifySarah } from "../services/sarah";
 
 export async function conversationRoutes(app: FastifyInstance) {
   const prisma = (app as any).prisma;
@@ -78,6 +79,16 @@ export async function conversationRoutes(app: FastifyInstance) {
         });
 
         (app as any).io.to(`conversation:${conversation.id}`).emit("message:new", message);
+
+        await notifySarah({
+          messageId: message.id,
+          conversationId: conversation.id,
+          channelType: conversation.channel.type,
+          direction: "outbound",
+          contact: (conversation.contact as any).id ?? "",
+          body: message.body ?? "",
+          timestamp: message.sentAt,
+        });
 
         return reply.status(201).send(message);
       } catch (err: any) {

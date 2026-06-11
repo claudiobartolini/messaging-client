@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { registry } from "../channels/registry";
+import { notifySarah } from "../services/sarah";
 
 export async function webhookRoutes(app: FastifyInstance) {
   // Webhook verification (GET) - used by WhatsApp to verify the endpoint
@@ -137,6 +138,16 @@ export async function webhookRoutes(app: FastifyInstance) {
           // Emit via Socket.IO
           (app as any).io.to(`conversation:${conversation.id}`).emit("message:new", savedMessage);
           (app as any).io.to(`channel:${channel.id}`).emit("conversation:updated", conversation);
+
+          await notifySarah({
+            messageId: savedMessage.id,
+            conversationId: conversation.id,
+            channelType: channel.type,
+            direction: "inbound",
+            contact: (conversation.contact as any).id ?? "",
+            body: savedMessage.body ?? "",
+            timestamp: savedMessage.sentAt,
+          });
         } catch (err) {
           app.log.error({ err, msg }, "Failed to persist inbound message");
         }
