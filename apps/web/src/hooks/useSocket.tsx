@@ -48,6 +48,7 @@ export function useSocket() {
         const allConversations = allConvData.flatMap(([, data]) => data ?? []);
         const conv = allConversations.find((c: any) => c.id === message.conversationId);
         if (!conv?.assignedTo) {
+          console.log("[notify] firing notification for", message.conversationId, "perm:", Notification.permission);
           const contactName = (conv?.contact as any)?.name ?? (conv?.contact as any)?.id ?? "Unknown";
           const channelName = conv?.channel?.name ?? conv?.channel?.type ?? "";
           const notifBody = `${message.body ?? "New message"} — via ${channelName}`;

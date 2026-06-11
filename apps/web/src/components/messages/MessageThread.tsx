@@ -56,9 +56,10 @@ export function MessageThread() {
     enabled: !!activeConversationId,
   });
 
-  // Get conversation metadata from list cache
-  const conversations: any[] = queryClient.getQueryData(["conversations"]) ?? [];
-  const conversation = conversations.find((c: any) => c.id === activeConversationId);
+  // Get conversation metadata — search across all ["conversations", *] cache keys
+  const allConvData = queryClient.getQueriesData<any[]>({ queryKey: ["conversations"] });
+  const allConversations = allConvData.flatMap(([, data]) => data ?? []);
+  const conversation = allConversations.find((c: any) => c.id === activeConversationId);
   const isMine = conversation?.assignedTo === operatorName;
   const isClaimedByOther = !!conversation?.assignedTo && !isMine;
   const isLocked = isClaimedByOther;
