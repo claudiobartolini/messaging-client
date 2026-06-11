@@ -43,27 +43,31 @@ export function useSocket() {
 
       // Notify operator of new unclaimed inbound messages
       if (message.direction === "inbound" && activeConvRef.current !== message.conversationId) {
-        const conversations: any[] = queryClient.getQueryData(["conversations"]) ?? [];
-        const conv = conversations.find((c: any) => c.id === message.conversationId);
-        if (conv && !conv.assignedTo) {
-          const contactName = (conv.contact as any)?.name ?? (conv.contact as any)?.id ?? "Unknown";
-          const channelName = conv.channel?.name ?? conv.channel?.type ?? "";
+        // getQueriesData matches all ["conversations", *] keys regardless of channel filter
+        const allConvData = queryClient.getQueriesData<any[]>({ queryKey: ["conversations"] });
+        const allConversations = allConvData.flatMap(([, data]) => data ?? []);
+        const conv = allConversations.find((c: any) => c.id === message.conversationId);
+        if (!conv?.assignedTo) {
+          const contactName = (conv?.contact as any)?.name ?? (conv?.contact as any)?.id ?? "Unknown";
+          const channelName = conv?.channel?.name ?? conv?.channel?.type ?? "";
           const notifBody = `${message.body ?? "New message"} — via ${channelName}`;
+
+          const convId = conv?.id ?? message.conversationId;
 
           if (Notification.permission === "granted") {
             const n = new Notification(`New message from ${contactName}`, {
               body: notifBody,
-              tag: conv.id,
+              tag: convId,
             });
             n.onclick = () => {
               window.focus();
               if (operatorNameRef.current) {
-                api.claimConversation(conv.id, operatorNameRef.current).then(() => {
+                api.claimConversation(convId, operatorNameRef.current).then(() => {
                   queryClient.invalidateQueries({ queryKey: ["conversations"] });
-                  useAppStore.getState().setActiveConversation(conv.id);
+                  useAppStore.getState().setActiveConversation(convId);
                 }).catch(() => {});
               } else {
-                useAppStore.getState().setActiveConversation(conv.id);
+                useAppStore.getState().setActiveConversation(convId);
               }
               n.close();
             };
@@ -76,9 +80,9 @@ export function useSocket() {
                     <button
                       className="ml-2 text-indigo-400 underline text-xs"
                       onClick={() => {
-                        api.claimConversation(conv.id, operatorNameRef.current).then(() => {
+                        api.claimConversation(convId, operatorNameRef.current).then(() => {
                           queryClient.invalidateQueries({ queryKey: ["conversations"] });
-                          useAppStore.getState().setActiveConversation(conv.id);
+                          useAppStore.getState().setActiveConversation(convId);
                         }).catch(() => {});
                         toast.dismiss(t.id);
                       }}
