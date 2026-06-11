@@ -135,7 +135,10 @@ jobs:
           image: ${{ needs.build.outputs.api_image }}
           region: ${{ env.REGION }}
           project_id: ${{ env.PROJECT_ID }}
-          flags: --vpc-connector=messaging-connector
+          flags: >-
+            --vpc-connector=messaging-connector
+            --update-secrets=SARAH_WEBHOOK_URL=SARAH_WEBHOOK_URL:latest
+            --update-env-vars=API_URL=https://messaging-api-507526882837.europe-west1.run.app
 
   deploy-web:
     name: Deploy web
