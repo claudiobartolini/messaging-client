@@ -52,3 +52,24 @@ export async function notifySarah(payload: SarahTurnPayload) {
   console.log(`[sarah] enqueuing turn for message ${payload.messageId}`);
   await sarahQueue.add("turn", payload, { jobId: payload.messageId });
 }
+
+export function notifySarahClaim(payload: {
+  conversationId: string;
+  assignedTo: string;
+  channelType: string;
+  contact: unknown;
+}) {
+  const url = process.env.SARAH_WEBHOOK_URL;
+  if (!url) return;
+  const body = {
+    event: "conversation:claimed",
+    apiUrl: process.env.API_URL ?? "",
+    ...payload,
+  };
+  console.log(`[sarah] notifying claim for conversation ${payload.conversationId}`);
+  fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).catch((err) => console.error("[sarah] claim notification failed:", err));
+}

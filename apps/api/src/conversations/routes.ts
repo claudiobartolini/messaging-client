@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { registry } from "../channels/registry";
-import { notifySarah } from "../services/sarah";
+import { notifySarah, notifySarahClaim } from "../services/sarah";
 
 export async function conversationRoutes(app: FastifyInstance) {
   const prisma = (app as any).prisma;
@@ -109,6 +109,12 @@ export async function conversationRoutes(app: FastifyInstance) {
         include: { channel: { select: { type: true, name: true } } },
       });
       (app as any).io.to(`channel:${conversation.channelId}`).emit("conversation:updated", conversation);
+      notifySarahClaim({
+        conversationId: conversation.id,
+        assignedTo: request.body.operatorName,
+        channelType: conversation.channel.type,
+        contact: conversation.contact,
+      });
       return reply.send(conversation);
     }
   );
