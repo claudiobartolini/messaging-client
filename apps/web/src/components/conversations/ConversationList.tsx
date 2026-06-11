@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { api } from "../../api/client";
@@ -14,7 +14,8 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function ConversationList() {
-  const { activeChannelFilter, activeConversationId, setActiveConversation, clearUnread, unreadCounts } = useAppStore();
+  const { activeChannelFilter, activeConversationId, setActiveConversation, clearUnread, unreadCounts, operatorName } = useAppStore();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
@@ -37,6 +38,20 @@ export function ConversationList() {
     clearUnread(conv.id);
   }
 
+  function handleClaim(e: React.MouseEvent, convId: string) {
+    e.stopPropagation();
+    api.claimConversation(convId, operatorName).then(() => {
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    });
+  }
+
+  function handleRelease(e: React.MouseEvent, convId: string) {
+    e.stopPropagation();
+    api.releaseConversation(convId).then(() => {
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    });
+  }
+
   return (
     <div className="w-72 flex flex-col bg-gray-900 border-r border-gray-800">
       <div className="px-4 py-3 border-b border-gray-800 space-y-2">
@@ -48,7 +63,6 @@ export function ConversationList() {
           placeholder="Search..."
           className="w-full bg-gray-800 text-gray-200 placeholder-gray-600 rounded-lg px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500 transition"
         />
-        {/* Status filter tabs */}
         <div className="flex gap-1">
           {STATUS_FILTERS.map((f) => (
             <button
@@ -66,9 +80,7 @@ export function ConversationList() {
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {isLoading && (
-          <div className="p-4 text-gray-500 text-sm">Loading...</div>
-        )}
+        {isLoading && <div className="p-4 text-gray-500 text-sm">Loading...</div>}
 
         {!isLoading && filtered.length === 0 && (
           <div className="p-4 text-gray-500 text-sm">
@@ -81,6 +93,8 @@ export function ConversationList() {
           const unread = unreadCounts[conv.id] ?? conv.unreadCount ?? 0;
           const isActive = conv.id === activeConversationId;
           const status: string = conv.status ?? "open";
+          const isMine = conv.assignedTo === operatorName;
+          const isOther = !!conv.assignedTo && !isMine;
 
           return (
             <button
@@ -91,7 +105,6 @@ export function ConversationList() {
             >
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-1.5 min-w-0">
-                  {/* Status dot */}
                   <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS_COLORS[status] ?? "bg-gray-500"}`} />
                   <span className="text-sm font-medium text-gray-200 truncate">
                     {contact?.name ?? contact?.id ?? "Unknown"}
@@ -108,6 +121,7 @@ export function ConversationList() {
                   </span>
                 </div>
               </div>
+
               <div className="flex items-center gap-1">
                 <span className="text-xs text-gray-500 shrink-0">{conv.channel?.name}</span>
                 {conv.lastMessageBody && (
@@ -117,14 +131,36 @@ export function ConversationList() {
                   </>
                 )}
               </div>
-              {/* Assignee chip */}
-              {conv.assignedTo && (
-                <div className="mt-1">
-                  <span className="text-xs text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full">
+
+              {/* Claim / Release / Assignee row */}
+              <div className="mt-1.5 flex items-center gap-2">
+                {!conv.assignedTo && operatorName && (
+                  <button
+                    onClick={(e) => handleClaim(e, conv.id)}
+                    className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/40 transition font-medium"
+                  >
+                    Claim
+                  </button>
+                )}
+                {isMine && (
+                  <>
+                    <span className="text-xs text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full font-medium">
+                      You
+                    </span>
+                    <button
+                      onClick={(e) => handleRelease(e, conv.id)}
+                      className="text-xs text-gray-500 hover:text-gray-300 transition"
+                    >
+                      Release
+                    </button>
+                  </>
+                )}
+                {isOther && (
+                  <span className="text-xs text-gray-400 bg-gray-700/50 px-2 py-0.5 rounded-full">
                     {conv.assignedTo}
                   </span>
-                </div>
-              )}
+                )}
+              </div>
             </button>
           );
         })}
