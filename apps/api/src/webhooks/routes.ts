@@ -137,7 +137,7 @@ export async function webhookRoutes(app: FastifyInstance) {
 
           // Emit via Socket.IO
           (app as any).io.to(`conversation:${conversation.id}`).emit("message:new", savedMessage);
-          (app as any).io.to(`channel:${channel.id}`).emit("conversation:updated", conversation);
+          (app as any).io.emit("conversation:updated", { id: conversation.id, channelId: channel.id });
 
           await notifySarah({
             messageId: savedMessage.id,

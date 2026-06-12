@@ -108,11 +108,15 @@ export function useSocket() {
       );
     });
 
-    socket.on("conversation:updated", () => {
+    socket.on("conversation:updated", (data: { id: string }) => {
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      if (data?.id && data.id === activeConvRef.current) {
+        queryClient.invalidateQueries({ queryKey: ["messages", data.id] });
+      }
     });
 
     socket.on("suggestion:new", (payload: { conversationId: string; suggestion: string }) => {
+      console.log("[socket] suggestion:new", payload);
       useAppStore.getState().setSuggestion(payload.conversationId, payload.suggestion);
     });
 
@@ -122,6 +126,9 @@ export function useSocket() {
 
     socket.on("connect", () => {
       toast.dismiss("socket-disconnect");
+      if (activeConvRef.current) {
+        socket?.emit("join:conversation", activeConvRef.current);
+      }
     });
 
     return () => {

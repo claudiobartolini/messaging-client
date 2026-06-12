@@ -94,6 +94,7 @@ async function start() {
 
     socket.on("join:conversation", (conversationId: string) => {
       socket.join(`conversation:${conversationId}`);
+      app.log.info(`Socket ${socket.id} joined conversation:${conversationId}`);
     });
 
     socket.on("leave:conversation", (conversationId: string) => {

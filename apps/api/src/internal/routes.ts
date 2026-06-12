@@ -5,8 +5,7 @@ export async function internalRoutes(app: FastifyInstance) {
     "/conversations/:id/suggestions",
     async (request, reply) => {
       const payload = { ...request.body, conversationId: request.params.id };
-      (app as any).io.to(`conversation:${request.params.id}`).emit("suggestion:new", payload);
-      app.log.info({ conversationId: request.params.id }, "suggestion:new emitted");
+      (app as any).io.emit("suggestion:new", payload);
       return reply.send({ status: "ok" });
     }
   );

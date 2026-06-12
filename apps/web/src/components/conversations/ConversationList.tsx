@@ -97,10 +97,13 @@ export function ConversationList() {
           const isOther = !!conv.assignedTo && !isMine;
 
           return (
-            <button
+            <div
               key={conv.id}
+              role="button"
+              tabIndex={0}
               onClick={() => handleSelect(conv)}
-              className={`w-full text-left px-4 py-3 border-b border-gray-800/50 transition-colors
+              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && handleSelect(conv)}
+              className={`w-full text-left px-4 py-3 border-b border-gray-800/50 transition-colors cursor-pointer
                 ${isActive ? "bg-indigo-600/20 border-l-2 border-l-indigo-500" : "hover:bg-gray-800/50"}`}
             >
               <div className="flex items-center justify-between mb-1">
@@ -161,7 +164,7 @@ export function ConversationList() {
                   </span>
                 )}
               </div>
-            </button>
+            </div>
           );
         })}
       </div>
