@@ -112,6 +112,10 @@ export function useSocket() {
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
     });
 
+    socket.on("suggestion:new", (payload: { conversationId: string; suggestion: string }) => {
+      useAppStore.getState().setSuggestion(payload.conversationId, payload.suggestion);
+    });
+
     socket.on("disconnect", () => {
       toast.error("Disconnected from server", { id: "socket-disconnect" });
     });
@@ -124,6 +128,7 @@ export function useSocket() {
       socket?.off("message:new");
       socket?.off("message:updated");
       socket?.off("conversation:updated");
+      socket?.off("suggestion:new");
       socket?.off("disconnect");
       socket?.off("connect");
     };

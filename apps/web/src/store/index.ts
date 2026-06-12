@@ -7,6 +7,7 @@ interface AppState {
   unreadCounts: Record<string, number>;
   optimisticMessages: Record<string, Message[]>;
   operatorName: string;
+  suggestions: Record<string, string>;
 
   setActiveConversation: (id: string | null) => void;
   setChannelFilter: (channelId: string | null) => void;
@@ -15,6 +16,8 @@ interface AppState {
   addOptimisticMessage: (conversationId: string, message: Message) => void;
   clearOptimisticMessages: (conversationId: string) => void;
   setOperatorName: (name: string) => void;
+  setSuggestion: (conversationId: string, suggestion: string) => void;
+  clearSuggestion: (conversationId: string) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -23,6 +26,7 @@ export const useAppStore = create<AppState>((set) => ({
   unreadCounts: {},
   optimisticMessages: {},
   operatorName: localStorage.getItem("operatorName") ?? "",
+  suggestions: {},
 
   setActiveConversation: (id) => set({ activeConversationId: id }),
   setChannelFilter: (channelId) => set({ activeChannelFilter: channelId }),
@@ -59,4 +63,13 @@ export const useAppStore = create<AppState>((set) => ({
     localStorage.setItem("operatorName", name);
     set({ operatorName: name });
   },
+
+  setSuggestion: (conversationId, suggestion) =>
+    set((s) => ({ suggestions: { ...s.suggestions, [conversationId]: suggestion } })),
+
+  clearSuggestion: (conversationId) =>
+    set((s) => {
+      const { [conversationId]: _, ...rest } = s.suggestions;
+      return { suggestions: rest };
+    }),
 }));

@@ -15,6 +15,7 @@ import { VonageAdapter } from "./channels/vonage/vonage.adapter";
 import { webhookRoutes } from "./webhooks/routes";
 import { channelRoutes } from "./settings/channel.routes";
 import { conversationRoutes } from "./conversations/routes";
+import { internalRoutes } from "./internal/routes";
 
 async function start() {
   const prisma = new PrismaClient();
@@ -84,6 +85,7 @@ async function start() {
   await app.register(webhookRoutes, { prefix: "/webhooks" });
   await app.register(channelRoutes, { prefix: "/api/channels" });
   await app.register(conversationRoutes, { prefix: "/api/conversations" });
+  await app.register(internalRoutes, { prefix: "/internal" });
 
   app.get("/health", async () => ({ status: "ok" }));
 

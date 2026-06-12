@@ -45,9 +45,10 @@ function DateSeparator({ date }: { date: Date }) {
 }
 
 export function MessageThread() {
-  const { activeConversationId, operatorName } = useAppStore();
+  const { activeConversationId, operatorName, suggestions, clearSuggestion } = useAppStore();
   const queryClient = useQueryClient();
   const [input, setInput] = useState("");
+  const suggestion = activeConversationId ? (suggestions[activeConversationId] ?? null) : null;
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const { data: messages = [], isLoading } = useQuery({
@@ -231,6 +232,36 @@ export function MessageThread() {
         {rendered}
         <div ref={bottomRef} />
       </div>
+
+      {/* Sarah suggestion pane */}
+      {suggestion && (
+        <div className="mx-4 mb-1 rounded-xl border border-indigo-500/30 bg-indigo-950/40 px-4 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-indigo-400 mb-1">Sarah suggests</p>
+              <p className="text-sm text-gray-300 leading-relaxed">{suggestion}</p>
+            </div>
+            <button
+              onClick={() => activeConversationId && clearSuggestion(activeConversationId)}
+              className="shrink-0 text-gray-600 hover:text-gray-400 transition text-lg leading-none mt-0.5"
+              title="Dismiss"
+            >
+              ×
+            </button>
+          </div>
+          {!isLocked && (
+            <button
+              onClick={() => {
+                setInput(suggestion);
+                activeConversationId && clearSuggestion(activeConversationId);
+              }}
+              className="mt-2 text-xs px-3 py-1 rounded-lg bg-indigo-600/30 text-indigo-300 hover:bg-indigo-600/50 transition font-medium"
+            >
+              Insert
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Input */}
       <div className="px-4 py-3 border-t border-gray-800 bg-gray-900">
