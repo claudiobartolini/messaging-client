@@ -109,6 +109,13 @@ export async function conversationRoutes(app: FastifyInstance) {
         include: { channel: { select: { type: true, name: true } } },
       });
       (app as any).io.to(`channel:${conversation.channelId}`).emit("conversation:updated", conversation);
+      (app as any).io.emit("conversation:claimed", {
+        id: conversation.id,
+        assignedTo: conversation.assignedTo,
+        channelId: conversation.channelId,
+        contact: conversation.contact,
+        channel: conversation.channel,
+      });
       notifySarahClaim({
         conversationId: conversation.id,
         assignedTo: request.body.operatorName,
