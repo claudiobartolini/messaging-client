@@ -115,6 +115,13 @@ export function useSocket() {
       }
     });
 
+    socket.on("message:status", (payload: { id: string; conversationId: string; status: string }) => {
+      queryClient.setQueryData(
+        ["messages", payload.conversationId],
+        (old: any[] = []) => old.map((m) => m.id === payload.id ? { ...m, status: payload.status } : m)
+      );
+    });
+
     socket.on("suggestion:new", (payload: { conversationId: string; suggestion: string }) => {
       console.log("[socket] suggestion:new", payload);
       useAppStore.getState().setSuggestion(payload.conversationId, payload.suggestion);
@@ -134,6 +141,7 @@ export function useSocket() {
     return () => {
       socket?.off("message:new");
       socket?.off("message:updated");
+      socket?.off("message:status");
       socket?.off("conversation:updated");
       socket?.off("suggestion:new");
       socket?.off("disconnect");

@@ -49,53 +49,63 @@ export async function conversationRoutes(app: FastifyInstance) {
   app.post<{ Params: { id: string }; Body: { body: string } }>(
     "/:id/messages",
     async (request, reply) => {
-      try {
-        const conversation = await prisma.conversation.findUniqueOrThrow({
-          where: { id: request.params.id },
-          include: { channel: true },
-        });
+      const conversation = await prisma.conversation.findUniqueOrThrow({
+        where: { id: request.params.id },
+        include: { channel: true },
+      });
 
-        const adapter = registry.get(conversation.channel.type);
+      // Save first so the message is always persisted
+      const message = await prisma.message.create({
+        data: {
+          conversationId: conversation.id,
+          externalId: "",
+          direction: "outbound",
+          body: request.body.body,
+          status: "sending",
+          sentAt: new Date().toISOString(),
+        },
+      });
+
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { lastMessageAt: new Date(), lastMessageBody: request.body.body },
+      });
+
+      // Broadcast so the bridge and all clients receive it
+      (app as any).io.emit("message:new", message);
+
+      // Attempt delivery; failure is non-fatal
+      const adapter = registry.get(conversation.channel.type);
+      let finalStatus = "sent";
+      let externalId = "";
+      try {
         const result = await adapter.sendMessage(
           (conversation.contact as any).id,
           { body: request.body.body },
           conversation.channel.config
         );
-
-        const message = await prisma.message.create({
-          data: {
-            conversationId: conversation.id,
-            externalId: result.externalId,
-            direction: "outbound",
-            body: request.body.body,
-            status: result.status,
-            sentAt: new Date().toISOString(),
-          },
-        });
-
-        await prisma.conversation.update({
-          where: { id: conversation.id },
-          data: { lastMessageAt: new Date(), lastMessageBody: request.body.body },
-        });
-
-        (app as any).io.to(`conversation:${conversation.id}`).emit("message:new", message);
-
-        await notifySarah({
-          messageId: message.id,
-          conversationId: conversation.id,
-          channelType: conversation.channel.type,
-          direction: "outbound",
-          contact: (conversation.contact as any).id ?? "",
-          body: message.body ?? "",
-          timestamp: message.sentAt,
-        });
-
-        return reply.status(201).send(message);
-      } catch (err: any) {
-        if (err?.code === "P2025") throw err; // let global handler return 404
-        app.log.error(err, "sendMessage failed");
-        return reply.status(502).send({ error: "Failed to deliver message" });
+        finalStatus = result.status;
+        externalId = result.externalId;
+      } catch (err) {
+        app.log.warn(err, "sendMessage delivery failed");
       }
+      const updated = await prisma.message.update({
+        where: { id: message.id },
+        data: { externalId, status: finalStatus },
+      });
+      (app as any).io.emit("message:status", { id: updated.id, conversationId: updated.conversationId, status: finalStatus });
+
+      await notifySarah({
+        messageId: message.id,
+        conversationId: conversation.id,
+        channelType: conversation.channel.type,
+        direction: "outbound",
+        contact: (conversation.contact as any).id ?? "",
+        body: message.body ?? "",
+        timestamp: message.sentAt,
+      });
+
+      return reply.status(201).send(message);
     }
   );
 
