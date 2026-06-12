@@ -1,6 +1,5 @@
 import { FastifyInstance } from "fastify";
 import { registry } from "../channels/registry";
-import { notifySarah, notifySarahClaim } from "../services/sarah";
 
 export async function conversationRoutes(app: FastifyInstance) {
   const prisma = (app as any).prisma;
@@ -95,16 +94,6 @@ export async function conversationRoutes(app: FastifyInstance) {
       });
       (app as any).io.emit("message:status", { id: updated.id, conversationId: updated.conversationId, status: finalStatus });
 
-      await notifySarah({
-        messageId: message.id,
-        conversationId: conversation.id,
-        channelType: conversation.channel.type,
-        direction: "outbound",
-        contact: (conversation.contact as any).id ?? "",
-        body: message.body ?? "",
-        timestamp: message.sentAt,
-      });
-
       return reply.status(201).send(message);
     }
   );
@@ -125,12 +114,6 @@ export async function conversationRoutes(app: FastifyInstance) {
         channelId: conversation.channelId,
         contact: conversation.contact,
         channel: conversation.channel,
-      });
-      notifySarahClaim({
-        conversationId: conversation.id,
-        assignedTo: request.body.operatorName,
-        channelType: conversation.channel.type,
-        contact: conversation.contact,
       });
       return reply.send(conversation);
     }
