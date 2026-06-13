@@ -134,8 +134,8 @@ export async function webhookRoutes(app: FastifyInstance) {
             },
           });
 
-          // Emit via Socket.IO
-          (app as any).io.to(`conversation:${conversation.id}`).emit("message:new", savedMessage);
+          // Broadcast so messaging-bridge (no room) and all clients receive it
+          (app as any).io.emit("message:new", savedMessage);
           (app as any).io.emit("conversation:updated", { id: conversation.id, channelId: channel.id });
 
         } catch (err) {
