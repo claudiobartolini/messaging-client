@@ -75,9 +75,11 @@ async function start() {
 
   // Socket.IO
   const io = new Server(app.server, { cors: { origin: "*" } });
-  const pubClient = new Redis(process.env.REDIS_URL!);
-  const subClient = pubClient.duplicate();
-  io.adapter(createAdapter(pubClient, subClient));
+  if (process.env.REDIS_URL) {
+    const pubClient = new Redis(process.env.REDIS_URL);
+    const subClient = pubClient.duplicate();
+    io.adapter(createAdapter(pubClient, subClient));
+  }
   app.decorate("io", io);
   app.decorate("prisma", prisma);
 
