@@ -40,7 +40,7 @@ export function Sidebar() {
 
       <div className="flex-1" />
 
-      <
+      <a
         href="/settings"
         title="Settings"
         className="w-10 h-10 rounded-xl flex items-center justify-center text-lg bg-gray-800 hover:bg-gray-700 transition-all"
