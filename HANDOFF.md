@@ -1,163 +1,117 @@
-# Project Handoff: messaging-client
+# Handoff — Authenticated claim/release migration
 
-## What this is
-A multi-channel messaging inbox built as a pnpm + Turborepo monorepo. Lets you receive and reply to messages from multiple channels (WhatsApp via Vonage, Microsoft Teams) in a unified 3-panel UI.
+_Last updated: 2026-06-14_
 
-**GitHub (personal):** https://github.com/claudiobartolini/messaging-client
-**GitHub (org):** https://github.com/Skynet-Technology-Develop/messaging-client
-**Stack:** Fastify API + Prisma + PostgreSQL + Redis + Socket.IO (backend), React 19 + Vite + Zustand + TanStack Query (frontend)
+## Summary
 
----
+Operator "claim/release" of text conversations (Teams, etc.) was moved out of the
+standalone **messaging-client** web app and into **dg_sarah_frontend**, which has
+real Keycloak authentication. Claiming now records the operator's **verified
+Keycloak display name** instead of a free-text, self-typed name. The
+**messaging-client** web UI became a **read-only monitor**.
 
-## Deployment status (as of 2026-05-29)
+The four repos involved and how they connect:
 
-### GCP project: `skynet-gcp-network` (project number `507526882837`)
+- **dg_sarah_frontend** — operator-facing React app (Keycloak OIDC auth). New
+  `/inbox` route to list + claim text conversations; copilot page shows the claimed
+  conversation in text mode and lets the operator reply.
+- **sarah-concierge** — Node/Express service. Proxies `/text/*` calls from
+  dg_sarah_frontend to the messaging-client API, and bridges Socket.IO events to
+  the browser over SSE (messaging-bridge).
+- **messaging-client** — Fastify API + React web app on Cloud Run. Owns channels,
+  conversations, messages, and the claim/release API. Web UI is now read-only.
+- **sarah** — FastAPI backend (`test-sarah.xcall.it`). Users/roles + Sarah answer
+  endpoints. One unrelated fix landed here.
 
-| Service | URL | Status |
-|---|---|---|
-| **API** | `https://messaging-api-507526882837.europe-west1.run.app` | ✅ Live, healthy |
-| **Web** | `https://messaging-web-507526882837.europe-west1.run.app` | ✅ Live |
+## Data / event flow
 
-### Infrastructure
-| Resource | Details |
-|---|---|
-| Cloud SQL | `messaging-db` — Postgres 16, `db-g1-small`, `europe-west1` |
-| Instance connection name | `skynet-gcp-network:europe-west1:messaging-db` |
-| Memorystore Redis | `messaging-redis` — Redis 7, 1GB Basic, `10.114.207.147:6379` |
-| VPC connector | `messaging-connector` (`europe-west1`) |
-| Artifact Registry | `europe-west1-docker.pkg.dev/skynet-gcp-network/messaging/` |
-| Service account | `messaging-api@skynet-gcp-network.iam.gserviceaccount.com` |
-| WIF pool/provider | `github-pool` / `github-provider` |
-
-### Service account IAM roles (all granted)
-- `roles/artifactregistry.writer` — push images to Artifact Registry
-- `roles/run.developer` — deploy Cloud Run services and jobs
-- `roles/iam.serviceAccountUser` — act as service accounts during deploy
-
-### Secrets in Secret Manager
-| Secret | Contains |
-|---|---|
-| `DATABASE_URL` | PostgreSQL connection string via Cloud SQL Unix socket |
-| `REDIS_URL` | `redis://10.114.207.147:6379` |
-
-### GitHub Actions variables (set)
-| Variable | Value |
-|---|---|
-| `GCP_PROJECT_ID` | `skynet-gcp-network` |
-| `GCP_REGION` | `europe-west1` |
-| `VITE_API_URL` | `https://messaging-api-507526882837.europe-west1.run.app` |
-
-### GitHub Actions secrets (set)
-| Secret | Value |
-|---|---|
-| `WIF_PROVIDER` | `projects/507526882837/locations/global/workloadIdentityPools/github-pool/providers/github-provider` |
-| `WIF_SERVICE_ACCOUNT` | `messaging-api@skynet-gcp-network.iam.gserviceaccount.com` |
-
----
-
-## Active channels (configured in DB)
-
-### WhatsApp via Vonage
-Skynet uses Vonage as their WhatsApp BSP. A new `vonage` channel adapter was added alongside the original `whatsapp` adapter.
-
-| Field | Value |
-|---|---|
-| Channel type | `vonage` |
-| From number | `+390553980466` |
-| Vonage Application | configured — inbound + status URL both point to `/webhooks/vonage` |
-| API Key / Secret | stored in channel config in DB (not in codebase) |
-| Status | ✅ Inbound and outbound tested and working |
-
-### Microsoft Teams
-| Field | Value |
-|---|---|
-| Channel type | `teams` |
-| Azure Bot name | `messaging-bot` |
-| Azure Bot App ID | `d71e49d8-4263-4d9d-b204-c8e7e8ceacd1` |
-| Azure AD Tenant ID | `463d4265-fcf2-475e-b0d6-4d53cf2fffcd` |
-| Messaging endpoint | `https://messaging-api-507526882837.europe-west1.run.app/webhooks/teams` |
-| App ID + Secret | stored in channel config in DB (not in codebase) |
-| Status | ✅ Inbound and outbound tested and working |
-
-> **Note:** There is an unused App Registration `b51e84a6-9fff-490a-b9ce-5b227078d7e3` created during setup — it can be deleted from Azure AD.
-
----
-
-## CI/CD (GitHub Actions)
-
-Push to `main` on either remote → builds both Docker images for `linux/amd64` → runs `prisma migrate deploy` via Cloud Run Job → deploys API and web in parallel. **All jobs are now fully green.**
-
-CI/CD is configured on the personal repo (`claudiobartolini/messaging-client`). The Skynet org repo (`Skynet-Technology-Develop/messaging-client`) is a mirror — push to both remotes to keep them in sync.
-
-**Important:** Images must be built for `linux/amd64`. Locally use:
-```bash
-docker buildx build --platform=linux/amd64 ...
+```
+Teams → messaging-client (Cloud Run) → Socket.IO broadcast
+      → sarah-concierge messaging-bridge → SSE → dg_sarah_frontend browser
 ```
 
----
+Claim: dg_sarah_frontend → `PATCH /text/conversations/:id/claim` (sarah-concierge
+proxy) → `PATCH /api/conversations/:id/claim` (messaging-client) → sets
+`assignedTo` + emits `conversation:claimed` → bridged back over SSE → copilot page
+restores the conversation in text mode.
 
-## Pending work
+## What changed, per repo
 
-### Sarah co-pilot integration — turn forwarding
-Full implementation plan is in `PLAN.md` at the repo root. Summary:
-- New `apps/api/src/services/sarah.ts` — BullMQ queue + worker that POSTs every conversation turn (inbound and outbound, all channels) to `SARAH_WEBHOOK_URL`
-- Hook into `apps/api/src/webhooks/routes.ts` (inbound) and `apps/api/src/conversations/routes.ts` (outbound)
-- At-least-once delivery: jobs persist in Redis, retry up to 5×with exponential backoff; `messageId` in payload lets Sarah deduplicate
-- No DB changes, no auth changes, no UI changes — just add `SARAH_WEBHOOK_URL` env var
+### dg_sarah_frontend — branch `feat/messaging-client`
+- `src/services/messagingService.ts` (new) — `listConversations`,
+  `claimConversation(id, operatorName)`, `releaseConversation(id)` via the `/text`
+  proxy (`VITE_REACT_APP_TRANSCRIPTION_API_URL`).
+- `src/components/inboxpage/InboxPage.tsx` + `.css` (new) — `/inbox` route. Polls
+  conversations every 10s. Claim uses `authService.getUserDisplayName()` and
+  navigates to `/copilot`, where existing on-mount logic restores the claim.
+- `src/components/copilotpage/CopilotRightTopSection.tsx` — Release button in the
+  text-mode header (releases + resets to voice mode).
+- `src/App.tsx` — `/inbox` route wrapped in `<Layout>`.
+- `src/components/sidebar/Sidebar.tsx` — Inbox nav item (gated by `copilot_user`).
+- `src/components/callback/Callback.tsx` — `useRef` guard so OIDC
+  `signinRedirectCallback` runs once under React StrictMode (fixes the 400
+  "Code not valid" on Keycloak token exchange).
+- Key commits: `5aa23d2` (inbox + claim/release), `4c51c6c` (auth + layout fixes).
 
-### Teams — attachment/image support
-When a Teams user sends an image or file, it currently does not appear in the inbox. The adapter only processes text messages. Two levels of fix available:
-- **Basic:** Show `📎 filename.ext` in the message body — ~30 min
-- **Full:** Backend proxy endpoint that fetches the file with a Bot Framework token and streams it to the browser, frontend renders images inline — ~2-3 hours
+### sarah-concierge — branch `feat/messaging-client`
+- `routes/text.js` — added `GET /conversations`,
+  `PATCH /conversations/:id/claim` (forwards `{ operatorName }`),
+  `PATCH /conversations/:id/release`.
+- `services/messaging-bridge.js` — relays `conversation:claimed` over SSE.
+- Key commit: `af99dcc`.
+- NOTE: requires a **restart/redeploy** for the new routes to be live.
 
-### Keycloak authentication
-All code is written. Just needs real values added to the environment:
-- `KEYCLOAK_URL`, `KEYCLOAK_REALM`, `KEYCLOAK_CLIENT_ID` → add as secrets in Secret Manager + mount in Cloud Run
-- `VITE_KEYCLOAK_URL`, `VITE_KEYCLOAK_REALM`, `VITE_KEYCLOAK_CLIENT_ID` → add as build-time GitHub Actions variables, then push to trigger a web rebuild
+### messaging-client — branch `main` (already merged, commit `f7da64f`)
+- Removed `NamePrompt`, removed `operatorName` from the Zustand store +
+  `localStorage`.
+- `ConversationList.tsx` — dropped Claim/Release buttons; shows a read-only
+  `assignedTo` badge.
+- `MessageThread.tsx` — dropped claim/release header buttons + reply composer +
+  send mutation; added a "read-only" footer notice.
+- `hooks/useSocket.tsx` — removed auto-claim on notification click (kept focus +
+  select).
+- LEFT INTACT (intentionally): `/settings` admin panel (unauthenticated); the
+  claim/release **API routes** (still used via the sarah-concierge proxy); the
+  `conversation:claimed` emit; the dormant Keycloak/JWT scaffolding.
+- Deploys automatically on push to `main` (`.github/workflows/deploy.yml`,
+  Cloud Run, `--max-instances=1`).
 
-### Option A — single domain load balancer
-The domain `xcall.it` is reserved. The LB script is ready at `deploy/07-load-balancer.sh`:
-```bash
-DOMAIN=xcall.it PROJECT_ID=skynet-gcp-network bash deploy/07-load-balancer.sh
-```
-After running: create DNS A record, wait ~15 min for SSL cert, clear `VITE_API_URL` in GitHub Actions variables and push to redeploy the web image.
+### sarah — branch `feat/messaging-client` (commit `c46d4fb`)
+- `src/sarah/routes/sarah_routes.py` — `UserResponse.extension` changed to
+  `Optional[str] = None` to stop a 500 when a user has no extension. Non-fatal
+  (the frontend already tolerated the failure), so low-urgency.
+- Deploys on git tag `v*.*.*` or push to `development` — **not** on
+  `feat/messaging-client`, so this fix is not yet on `test-sarah.xcall.it`.
 
----
+## Design decisions (why)
+- **UI-gated auth**: dg_sarah_frontend's Keycloak login is the authentication. The
+  messaging-client API stays open, reachable only via the authenticated frontend →
+  sarah-concierge proxy. No JWT enforcement was added to the messaging-client API.
+- **Dedicated `/inbox` route** (not a copilot panel) for the conversation picker.
+- **Polling, not a second SSE stream**, on `/inbox`: `transcriptionService` is a
+  singleton with one AbortController owned by the copilot page; a second SSE
+  consumer would conflict.
 
-## Known issues / gotchas
+## Current status
+- All code committed and pushed on the branches above.
+- Core flow tested locally: claim from `/inbox` → `/copilot` text mode with history
+  → reply works (verified visually).
+- messaging-client read-only changes are on `main` → CI deploy triggered.
 
-1. **`--allow-unauthenticated` warning** — org policy blocks setting this via `gcloud run deploy`. Needs Owner to run:
-   ```bash
-   gcloud beta run services add-iam-policy-binding --region=europe-west1 \
-     --member=allUsers --role=roles/run.invoker messaging-api --project=skynet-gcp-network
-   gcloud beta run services add-iam-policy-binding --region=europe-west1 \
-     --member=allUsers --role=roles/run.invoker messaging-web --project=skynet-gcp-network
-   ```
-
-2. **Prisma on Alpine** — `binaryTargets = ["native", "linux-musl-openssl-3.0.x"]` is set in `schema.prisma`. Do not remove it.
-
-3. **Prisma client in standalone** — `apps/api/Dockerfile` runs `prisma generate` inside `api-standalone` after `pnpm deploy --prod`. This is required — do not remove that step.
-
-4. **DB password** — stored only in Secret Manager as part of `DATABASE_URL`. If you need it: `gcloud secrets versions access latest --secret=DATABASE_URL --project=skynet-gcp-network`
-
-5. **Socket.IO with separate domains** — `VITE_API_URL` is baked into the web image at build time. If the API URL ever changes, rebuild the web image with the new URL. Resolved once Option A (single domain LB) is live.
-
-6. **Teams serviceUrl** — outbound Teams messages require `serviceUrl::conversationId` as the `to` address. This is stored correctly for all new conversations. Any conversations created before 2026-05-29 in the DB have the old format and cannot receive replies — they can be ignored.
-
-7. **Git credentials** — the macOS Keychain credential for GitHub was cleared during setup. Future `git push origin` will prompt for re-authentication via browser. Use `git push <url-with-pat> main` as a workaround if needed.
-
----
-
-## Local development
-
-```bash
-# Prerequisites: Node 20+, pnpm, Docker
-git clone https://github.com/claudiobartolini/messaging-client
-cd messaging-client
-pnpm install
-cp apps/api/.env.example apps/api/.env
-docker compose up -d
-pnpm --filter @messaging/api db:migrate
-pnpm dev
-# API: localhost:3001 — Web: localhost:5173
-```
+## Suggested next steps
+1. **Open PRs** for the three `feat/messaging-client` branches
+   (dg_sarah_frontend, sarah-concierge, sarah). messaging-client is already on
+   `main`.
+2. **Verify the messaging-client Cloud Run deploy** succeeded (`gh run list`) and
+   the read-only revision is live.
+3. **Deploy sarah-concierge** (restart) so the claim/release proxy routes are live
+   in the target environment.
+4. **Get the sarah `extension` fix deployed** — merge into the deploy branch
+   (`development`) or cut a `v*.*.*` tag. Low-urgency (non-fatal).
+5. **Full end-to-end test** in a shared environment: claim → live bubble + Sarah
+   suggestion → reply lands in Teams → release; confirm `assignedTo` is the Keycloak
+   display name; confirm voice copilot is unaffected.
+6. **Follow-ups (deferred):** enable server-side JWT validation at the
+   messaging-client API and forward the Keycloak token through the proxy;
+   authenticate the messaging-client admin panel; make `/users/{email}` return 404
+   (not 500) for genuinely missing users.
