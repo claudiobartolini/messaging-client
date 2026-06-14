@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
 import toast from "react-hot-toast";
 import { api } from "../../api/client";
@@ -45,9 +45,8 @@ function DateSeparator({ date }: { date: Date }) {
 }
 
 export function MessageThread() {
-  const { activeConversationId, operatorName, suggestions, clearSuggestion } = useAppStore();
+  const { activeConversationId, suggestions, clearSuggestion } = useAppStore();
   const queryClient = useQueryClient();
-  const [input, setInput] = useState("");
   const suggestion = activeConversationId ? (suggestions[activeConversationId] ?? null) : null;
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -61,21 +60,6 @@ export function MessageThread() {
   const allConvData = queryClient.getQueriesData<any[]>({ queryKey: ["conversations"] });
   const allConversations = allConvData.flatMap(([, data]) => data ?? []);
   const conversation = allConversations.find((c: any) => c.id === activeConversationId);
-  const isMine = conversation?.assignedTo === operatorName;
-  const isClaimedByOther = !!conversation?.assignedTo && !isMine;
-  const isLocked = isClaimedByOther;
-
-  const claim = useMutation({
-    mutationFn: () => api.claimConversation(activeConversationId!, operatorName),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["conversations"] }),
-    onError: () => toast.error("Could not claim conversation"),
-  });
-
-  const release = useMutation({
-    mutationFn: () => api.releaseConversation(activeConversationId!),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["conversations"] }),
-    onError: () => toast.error("Could not release conversation"),
-  });
 
   const updateStatus = useMutation({
     mutationFn: (status: string) => api.updateConversationStatus(activeConversationId!, status),
@@ -83,55 +67,9 @@ export function MessageThread() {
     onError: () => toast.error("Could not update status"),
   });
 
-  const send = useMutation({
-    mutationFn: (body: string) => api.sendMessage(activeConversationId!, body),
-    onMutate: async (body) => {
-      await queryClient.cancelQueries({ queryKey: ["messages", activeConversationId] });
-      const previous = queryClient.getQueryData(["messages", activeConversationId]);
-      const optimistic = {
-        id: `optimistic-${Date.now()}`,
-        conversationId: activeConversationId,
-        direction: "outbound",
-        body,
-        status: "sent",
-        sentAt: new Date().toISOString(),
-      };
-      queryClient.setQueryData(
-        ["messages", activeConversationId],
-        (old: any[] = []) => [...old, optimistic]
-      );
-      return { previous, optimisticId: optimistic.id };
-    },
-    onSuccess: (savedMessage: any, _vars, context) => {
-      queryClient.setQueryData(
-        ["messages", activeConversationId],
-        (old: any[] = []) => {
-          const without = old.filter(
-            (m) => m.id !== context?.optimisticId && m.id !== savedMessage.id
-          );
-          return [...without, savedMessage];
-        }
-      );
-    },
-    onError: (_err, _vars, context) => {
-      queryClient.setQueryData(["messages", activeConversationId], context?.previous);
-      toast.error("Failed to send message");
-    },
-    onSettled: () => {
-      // intentionally empty — onSuccess already set correct data
-    },
-  });
-
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
-
-  function handleSend() {
-    const body = input.trim();
-    if (!body || !activeConversationId) return;
-    setInput("");
-    send.mutate(body);
-  }
 
   if (!activeConversationId) {
     return (
@@ -194,33 +132,10 @@ export function MessageThread() {
             {STATUS_LABELS[status] ?? status}
           </button>
 
-          {/* Claim / assignee */}
-          {!conversation.assignedTo && (
-            <button
-              onClick={() => claim.mutate()}
-              disabled={!operatorName || claim.isPending}
-              className="text-xs px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30 disabled:opacity-40 disabled:cursor-not-allowed transition font-medium"
-            >
-              Claim
-            </button>
-          )}
-          {isMine && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-indigo-400 bg-indigo-500/10 px-3 py-1 rounded-full font-medium">
-                Claimed by you
-              </span>
-              <button
-                onClick={() => release.mutate()}
-                disabled={release.isPending}
-                className="text-xs text-gray-500 hover:text-gray-300 transition"
-              >
-                Release
-              </button>
-            </div>
-          )}
-          {isClaimedByOther && (
+          {/* Assignee badge (read-only) */}
+          {conversation.assignedTo && (
             <span className="text-xs text-gray-400 bg-gray-700/50 px-3 py-1 rounded-full font-medium">
-              Claimed by {conversation.assignedTo}
+              {conversation.assignedTo}
             </span>
           )}
         </div>
@@ -233,7 +148,7 @@ export function MessageThread() {
         <div ref={bottomRef} />
       </div>
 
-      {/* Sarah suggestion pane */}
+      {/* Sarah suggestion pane (read-only — no insert) */}
       {suggestion && (
         <div className="mx-4 mb-1 rounded-xl border border-indigo-500/30 bg-indigo-950/40 px-4 py-3">
           <div className="flex items-start justify-between gap-3">
@@ -249,45 +164,14 @@ export function MessageThread() {
               ×
             </button>
           </div>
-          {!isLocked && (
-            <button
-              onClick={() => {
-                setInput(suggestion);
-                activeConversationId && clearSuggestion(activeConversationId);
-              }}
-              className="mt-2 text-xs px-3 py-1 rounded-lg bg-indigo-600/30 text-indigo-300 hover:bg-indigo-600/50 transition font-medium"
-            >
-              Insert
-            </button>
-          )}
         </div>
       )}
 
-      {/* Input */}
+      {/* Read-only notice */}
       <div className="px-4 py-3 border-t border-gray-800 bg-gray-900">
-        {isLocked ? (
-          <p className="text-center text-xs text-gray-600 py-1">
-            Claimed by {conversation?.assignedTo} — you cannot reply
-          </p>
-        ) : (
-          <div className="flex items-center gap-3">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-              placeholder="Type a message..."
-              className="flex-1 bg-gray-800 text-gray-200 placeholder-gray-600 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition"
-            />
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() || send.isPending}
-              className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl px-4 py-2.5 text-sm font-medium transition"
-            >
-              Send
-            </button>
-          </div>
-        )}
+        <p className="text-center text-xs text-gray-600 py-1">
+          Read-only — claim conversations from dg_sarah_frontend to reply
+        </p>
       </div>
     </div>
   );

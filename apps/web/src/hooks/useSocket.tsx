@@ -3,7 +3,6 @@ import { io, Socket } from "socket.io-client";
 import { useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { useAppStore } from "../store";
-import { api } from "../api/client";
 
 let socket: Socket | null = null;
 
@@ -14,11 +13,9 @@ if (typeof window !== "undefined" && "Notification" in window && Notification.pe
 
 export function useSocket() {
   const queryClient = useQueryClient();
-  const { activeConversationId, incrementUnread, operatorName } = useAppStore();
+  const { activeConversationId, incrementUnread } = useAppStore();
   const activeConvRef = useRef(activeConversationId);
-  const operatorNameRef = useRef(operatorName);
   activeConvRef.current = activeConversationId;
-  operatorNameRef.current = operatorName;
 
   useEffect(() => {
     if (!socket) {
@@ -62,14 +59,7 @@ export function useSocket() {
             });
             n.onclick = () => {
               window.focus();
-              if (operatorNameRef.current) {
-                api.claimConversation(convId, operatorNameRef.current).then(() => {
-                  queryClient.invalidateQueries({ queryKey: ["conversations"] });
-                  useAppStore.getState().setActiveConversation(convId);
-                }).catch(() => {});
-              } else {
-                useAppStore.getState().setActiveConversation(convId);
-              }
+              useAppStore.getState().setActiveConversation(convId);
               n.close();
             };
           } else {
@@ -77,20 +67,6 @@ export function useSocket() {
               (t) => (
                 <span>
                   <strong>{contactName}</strong>: {message.body ?? "New message"}
-                  {operatorNameRef.current && (
-                    <button
-                      className="ml-2 text-indigo-400 underline text-xs"
-                      onClick={() => {
-                        api.claimConversation(convId, operatorNameRef.current).then(() => {
-                          queryClient.invalidateQueries({ queryKey: ["conversations"] });
-                          useAppStore.getState().setActiveConversation(convId);
-                        }).catch(() => {});
-                        toast.dismiss(t.id);
-                      }}
-                    >
-                      Claim
-                    </button>
-                  )}
                 </span>
               ),
               { duration: 8000 }

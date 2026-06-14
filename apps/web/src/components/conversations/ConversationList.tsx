@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { api } from "../../api/client";
@@ -14,8 +14,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function ConversationList() {
-  const { activeChannelFilter, activeConversationId, setActiveConversation, clearUnread, unreadCounts, operatorName } = useAppStore();
-  const queryClient = useQueryClient();
+  const { activeChannelFilter, activeConversationId, setActiveConversation, clearUnread, unreadCounts } = useAppStore();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
@@ -36,20 +35,6 @@ export function ConversationList() {
   function handleSelect(conv: any) {
     setActiveConversation(conv.id);
     clearUnread(conv.id);
-  }
-
-  function handleClaim(e: React.MouseEvent, convId: string) {
-    e.stopPropagation();
-    api.claimConversation(convId, operatorName).then(() => {
-      queryClient.invalidateQueries({ queryKey: ["conversations"] });
-    });
-  }
-
-  function handleRelease(e: React.MouseEvent, convId: string) {
-    e.stopPropagation();
-    api.releaseConversation(convId).then(() => {
-      queryClient.invalidateQueries({ queryKey: ["conversations"] });
-    });
   }
 
   return (
@@ -93,8 +78,6 @@ export function ConversationList() {
           const unread = unreadCounts[conv.id] ?? conv.unreadCount ?? 0;
           const isActive = conv.id === activeConversationId;
           const status: string = conv.status ?? "open";
-          const isMine = conv.assignedTo === operatorName;
-          const isOther = !!conv.assignedTo && !isMine;
 
           return (
             <div
@@ -135,35 +118,14 @@ export function ConversationList() {
                 )}
               </div>
 
-              {/* Claim / Release / Assignee row */}
-              <div className="mt-1.5 flex items-center gap-2">
-                {!conv.assignedTo && operatorName && (
-                  <button
-                    onClick={(e) => handleClaim(e, conv.id)}
-                    className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/40 transition font-medium"
-                  >
-                    Claim
-                  </button>
-                )}
-                {isMine && (
-                  <>
-                    <span className="text-xs text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full font-medium">
-                      You
-                    </span>
-                    <button
-                      onClick={(e) => handleRelease(e, conv.id)}
-                      className="text-xs text-gray-500 hover:text-gray-300 transition"
-                    >
-                      Release
-                    </button>
-                  </>
-                )}
-                {isOther && (
+              {/* Assignee badge (read-only) */}
+              {conv.assignedTo && (
+                <div className="mt-1.5">
                   <span className="text-xs text-gray-400 bg-gray-700/50 px-2 py-0.5 rounded-full">
                     {conv.assignedTo}
                   </span>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           );
         })}
